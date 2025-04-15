@@ -1,0 +1,15 @@
+a: -0.4
+b: 0.6
+opoznienie: 1
+zaklocenie: 0
+k: 0.5
+Ti: 5
+Td: 0.2
+amplituda: 2
+wypelnienie: 0.5
+czas_aktywacji: 1
+okres: 2
+skladowa_stala: 2
+typ: prostokatny
+dolna: 2
+gorna: 0

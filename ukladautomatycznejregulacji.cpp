@@ -1,0 +1,628 @@
+#include "ukladautomatycznejregulacji.h"
+#include "oknoarx.h"
+#include "ui_ukladautomatycznejregulacji.h"
+
+const QString nazwa = "konfiguracja.txt";
+
+UkladAutomatycznejRegulacji::UkladAutomatycznejRegulacji(QWidget *parent)
+    : QMainWindow(parent)
+    , ui(new Ui::UkladAutomatycznejRegulacji)
+{
+    ui->setupUi(this);
+    us = new UkladSterowania();
+    setFixedSize(1400, 780);
+    ustawShortcuty();
+    ustawWykresy();
+    ui->gorna->setMaximum(1000);
+    ui->dolna->setMinimum(-1000);
+    timer = new QTimer(this);
+    connect(timer, &QTimer::timeout, this, &UkladAutomatycznejRegulacji::startSymulacji);
+    ui->zatrzymaj->setEnabled(false);
+    ui->ukryjLegendy->setEnabled(false);
+    ui->btn_polacz_klient->setEnabled(false);
+    ui->btn_start_server->setEnabled(false);
+
+
+    manager = new NetworkManager(this);
+    connect(manager, &NetworkManager::connectedToPeer, this, [=]() {
+            QMessageBox::information(this, "Połączono", "Połączono z serwerem");
+            ui->wgrajARX->setEnabled(true);
+            ui->wgrajGWZ->setEnabled(false);
+            ui->wgrajPID->setEnabled(false);
+            ui->symuluj->setEnabled(true);
+            ui->zatrzymaj->setEnabled(true);
+            ui->resetuj->setEnabled(true);
+            ui->zapisDoPliku->setEnabled(false);
+            ui->wgrajzPliku->setEnabled(false);
+            ui->reset_calka->setEnabled(false);
+            ui->btn_polacz_klient->setEnabled(true);
+            ui->btn_start_server->setEnabled(true);
+    });
+
+    connect(manager, &NetworkManager::clientConnected, this, [=]() {
+            QMessageBox::information(this, "Klient połączony", "Klient połączył się z serwerem");
+            ui->wgrajARX->setEnabled(false);
+            ui->wgrajGWZ->setEnabled(true);
+            ui->wgrajPID->setEnabled(true);
+            ui->symuluj->setEnabled(false);
+            ui->zatrzymaj->setEnabled(false);
+            ui->resetuj->setEnabled(false);
+            ui->zapisDoPliku->setEnabled(false);
+            ui->wgrajzPliku->setEnabled(false);
+            ui->reset_calka->setEnabled(true);
+            ui->btn_polacz_klient->setEnabled(true);
+            ui->btn_start_server->setEnabled(true);
+    });
+
+    connect(manager, &NetworkManager::connectionFailed, this, [=](QString reason) {
+            QMessageBox::critical(this, "Błąd połączenia", reason);
+    });
+}
+
+UkladAutomatycznejRegulacji::~UkladAutomatycznejRegulacji()
+{
+    delete ui;
+}
+
+void UkladAutomatycznejRegulacji::startSymulacji()
+{
+    time += 0.1;
+
+    double wartZadana = us->gwz.pobierzWartoscZadana(time);//git
+
+
+    double wyjscie_pid = us->regulator.wykonajKrok(us->getUchyb());
+
+    double wartosc_zaklocenia = 0.0;
+
+    if (zaklocenie != 0.0)
+    {
+        std::random_device srng;
+        std::mt19937 rng;
+        rng.seed(srng());
+        std::normal_distribution<double> rozkladnormalny(0.0, this->zaklocenie);
+
+        wartosc_zaklocenia = rozkladnormalny(rng);
+        qDebug() << "Zakłócenie: " << zaklocenie;
+        qDebug() << "Wartość zakłócenia:" << wartosc_zaklocenia;
+    }
+
+    double wyjscie_arx = us->model.wykonajKrok(wartZadana) + wartosc_zaklocenia;
+    double uchyb = wartZadana - wyjscie_arx;
+    us->setUchyb(uchyb);
+
+    double wzmocnienie = us->regulator.getK();//git
+
+    double Ti = us->regulator.getTi();//git
+    double Td = us->regulator.getTd();//git
+    //uchyb = wartZadana - wyjscie_arx; //zle
+
+
+    //ARX
+    ui->customPlot->graph(0)->addData(time, wyjscie_arx);//Wartosc regulowana
+    //Uchyb
+    ui->customPlot_uchyb->graph(0)->addData(time, uchyb);
+    //Wartość Zadana
+    ui->customPlot->graph(1)->addData(time, wartZadana);
+    //PID
+    ui->customPlot_pid->graph(0)->addData(time, wyjscie_pid);//Sterowanie
+
+    ui->customPlot_pid->graph(1)->addData(time, wzmocnienie);
+
+    ui->customPlot_pid->graph(2)->addData(time, Ti);
+
+    ui->customPlot_pid->graph(3)->addData(time, Td);
+
+    if (time > ui->customPlot->xAxis->range().upper)
+    {
+        ui->customPlot->xAxis->setRange(time, 10, Qt::AlignRight);
+        ui->customPlot_uchyb->xAxis->setRange(time, 10, Qt::AlignRight);
+        ui->customPlot_pid->xAxis->setRange(time, 10, Qt::AlignRight);
+    }
+    ui->customPlot->replot();
+    ui->customPlot_pid->replot();
+    ui->customPlot_uchyb->replot();
+    ui->customPlot->xAxis->rescale();
+    ui->customPlot_pid->xAxis->rescale();
+    ui->customPlot_uchyb->xAxis->rescale();
+    ui->customPlot->yAxis->rescale();
+    ui->customPlot_pid->yAxis->rescale();
+    ui->customPlot_uchyb->yAxis->rescale();
+}
+
+void UkladAutomatycznejRegulacji::on_symuluj_clicked()
+{
+    bool czyWgrane = true;
+    for(int i = 0; i < 3; i++){
+        if(isWgrane[i] == 0) {
+            czyWgrane = false;
+        }
+    }
+    if(czyWgrane == true)
+    {
+        if(!timer->isActive()){
+            int interwalCzasowy = interwal; // Pobranie wartości interwału ze spinboxa
+            timer->start(interwalCzasowy);  // Ustawienie nowego interwału timera
+
+            // Dezaktywacja przycisku Start i aktywacja Stop
+            ui->symuluj->setEnabled(false);
+            ui->zatrzymaj->setEnabled(true);
+            ui->resetuj->setEnabled(true);
+        }
+        ui->ukryjLegendy->setEnabled(true);
+    }
+    else
+    {
+        if(isWgrane[0] == false){
+            QMessageBox::warning(this, "Błąd startu symulacji", "Przed rozpoczęciem symulacji upewnij się że dane MODELU ARX zostały poprawnie wgrane do programu");
+        }
+        if(isWgrane[1] == false){
+            QMessageBox::warning(this, "Błąd startu symulacji", "Przed rozpoczęciem symulacji upewnij się że dane REGULATORA PID zostały poprawnie wgrane do programu");
+        }
+        if(isWgrane[2] == false){
+            QMessageBox::warning(this, "Błąd startu symulacji", "Przed rozpoczęciem symulacji upewnij się że dane GENERATORA WARTOŚCI ZADANEJ zostały poprawnie wgrane do programu");
+        }
+    }
+}
+
+void UkladAutomatycznejRegulacji::on_zatrzymaj_clicked()
+{
+    if(timer->isActive()){
+        timer->stop();
+        ui->symuluj->setEnabled(true);
+        ui->zatrzymaj->setEnabled(false);
+        ui->resetuj->setEnabled(true);
+    }
+}
+
+void UkladAutomatycznejRegulacji::on_resetuj_clicked()
+{
+    if (timer->isActive())
+    {
+        timer->stop();
+    }
+
+    // RESET WARTOŚCI SYMULACJI - CZAS I UCHYB
+    time = 0.0;
+    uchyb = 0.0;
+
+    // CZYSZCZENIE WYKRESÓW
+    ui->customPlot->graph(0)->data()->clear();
+    ui->customPlot->graph(1)->data()->clear();
+    ui->customPlot_uchyb->graph(0)->data()->clear();
+    ui->customPlot_pid->graph(0)->data()->clear();
+    ui->customPlot_pid->graph(1)->data()->clear();
+    ui->customPlot_pid->graph(2)->data()->clear();
+    ui->customPlot_pid->graph(3)->data()->clear();
+
+    // AKTUALIZACJA WYKRESÓW
+    ui->customPlot->replot();
+    ui->customPlot_uchyb->replot();
+    ui->customPlot_pid->replot();
+
+    // ZRESETOWANIE PRZYCISKÓW
+    ui->symuluj->setEnabled(true);
+    ui->zatrzymaj->setEnabled(false);
+    ui->resetuj->setEnabled(false);
+    ui->ukryjLegendy->setEnabled(false);
+
+    // Czyszczenie pól edycyjnych
+    ui->te_k->clear();
+    ui->te_ti->clear();
+    ui->te_td->clear();
+    ui->amplituda->clear();
+    ui->czas_aktywacji->clear();
+    ui->wypelnienie->clear();
+    ui->okres->clear();
+    ui->gorna->clear();
+    ui->dolna->clear();
+    us->model.setZaklocenie(0.0);
+}
+
+void UkladAutomatycznejRegulacji::on_wyczyscDane_clicked()
+{ 
+    ui->te_k->clear();
+    ui->te_ti->clear();
+    ui->te_td->clear();
+    ui->amplituda->clear();
+    ui->czas_aktywacji->clear();
+    ui->wypelnienie->clear();
+    ui->okres->clear();
+    QString skok = "skok";
+    int index = ui->comboGWZ->findText(skok);
+    ui->comboGWZ->setCurrentIndex(index);
+    ui->gorna->clear();
+    ui->dolna->clear();
+}
+
+
+void UkladAutomatycznejRegulacji::ustawARX(QString wektor_a, QString wektor_b, int opoznienie, double zaklocenie, double interwal)
+{
+    bool ok;
+    std::vector<double> a;
+    std::vector<double> b;
+
+    QString text_a = wektor_a;
+    QString text_b = wektor_b;
+
+    QStringList aList = text_a.split(" ");
+    QStringList bList = text_b.split(" ");
+
+    for (const QString &a_i : aList)
+    {
+        double value = a_i.toDouble(&ok);
+        if (ok) {
+            a.push_back(value);
+        }
+        else
+        {
+            QMessageBox::warning(this, "Błąd wartości", "Podaj poprawną wartość wektora A!", QMessageBox::Ok);
+        }
+    }
+
+    for (const QString &b_i : bList)
+    {
+        double value = b_i.toDouble(&ok);
+        if (ok) {
+            b.push_back(value);
+        }
+        else
+        {
+             QMessageBox::warning(this, "Błąd wartości", "Podaj poprawną wartość wektora B!", QMessageBox::Ok);
+        }
+    }
+
+    int delay = opoznienie;
+    double disruption = zaklocenie;
+    if(disruption >= 0.0)
+    {
+        us->model.setZaklocenie(disruption);
+    }
+
+    us->model.setA(a);
+    us->model.setB(b);
+    us->model.setOpoznienie(delay);
+    us->model.setZaklocenie(disruption);
+    int interwalCzasowy = interwal;
+    timer->setInterval(interwalCzasowy);
+
+}
+
+void UkladAutomatycznejRegulacji::ustawPID()
+{
+    double wzmocnienie = ui->te_k->value();
+    double stala_calkowania = ui->te_ti->value();
+    double stala_rozniczkowania = ui->te_td->value();
+    double gorna = ui->gorna->value();
+    double dolna = ui->dolna->value();
+    bool czyAW = ui->antiwindup->isChecked();
+    bool metodaCalkowania = ui->checkbox_calkowanie->isChecked();
+    us->regulator.setK(wzmocnienie);
+    us->regulator.setTi(stala_calkowania);
+    us->regulator.setTd(stala_rozniczkowania);
+    us->regulator.setGranica(dolna, gorna);
+    us->regulator.setAW(czyAW);
+    us->regulator.ustawMetodeCalkowania(metodaCalkowania);
+}
+
+void UkladAutomatycznejRegulacji::ustawGWZ()
+{
+    TypSygnalu typ;
+    QString typSygnalu = ui->comboGWZ->currentText();
+    if(typSygnalu == "skok")
+    {
+        typ = TypSygnalu::skok;
+    }
+    if(typSygnalu == "sinusoida")
+    {
+        typ = TypSygnalu::sinusoida;
+    }
+    if(typSygnalu == "prostokatny")
+    {
+        typ = TypSygnalu::prostokatny;
+    }
+    double amplituda = ui->amplituda->value();
+    int czas = ui->czas_aktywacji->value();
+    double okres = ui->okres->value();
+    double wypelnienie = ui->wypelnienie->value();
+    double skladowa_stala = ui->skladowa_stala->value();
+
+    us->gwz.setTyp(typ);
+    us->gwz.setAmplituda(amplituda);
+    us->gwz.setOkres(okres);
+    us->gwz.setWypelnienie(wypelnienie);
+    us->gwz.setCzas(czas);
+    us->gwz.setSkladowaStala(skladowa_stala);
+
+}
+
+void UkladAutomatycznejRegulacji::on_zapisDoPliku_clicked()
+{
+    ZapisDoPliku();
+}
+
+void UkladAutomatycznejRegulacji::ZapisDoPliku()
+{
+    bool ok;
+    QFile plik(nazwa);
+    if (!plik.open(QIODevice::WriteOnly | QIODevice::Text))
+    {
+        QMessageBox::warning(this, "Błąd otwarcia pliku", "Program nie mógł otworzyć pliku w celu zapisu konfiguracji do pliku", QMessageBox::Ok);
+    }
+    QTextStream out(&plik);
+    if(!(wektor_a.isEmpty()))
+    {
+        out << "a: " << wektor_a.toDouble(&ok) << "\n";
+    }
+    else
+    {
+        out << "a: " << 0 << "\n";
+    }
+    if(!(wektor_b.isEmpty()))
+    {
+        out << "b: " << wektor_b.toDouble(&ok) << "\n";
+    }
+    else
+    {
+        out << "b: " << 0 << "\n";
+    }
+    out << "opoznienie: " << opoznienie<< "\n";
+    out << "zaklocenie: " << zaklocenie << "\n";
+    out << "k: " << ui->te_k->value() << "\n";
+    out << "Ti: " << ui->te_ti->value() << "\n";
+    out << "Td: " << ui->te_td->value() << "\n";
+    out << "amplituda: " << ui->amplituda->value() << "\n";
+    out << "wypelnienie: " << ui->wypelnienie->value() << "\n";
+    out << "czas_aktywacji: " << ui->czas_aktywacji->value() << "\n";
+    out << "okres: " << ui->okres->value() << "\n";
+    out << "skladowa_stala: " << ui->skladowa_stala->value() << "\n";
+    out << "typ: " << ui->comboGWZ->currentText()<< "\n";
+    out << "dolna: " << ui->dolna->value()<< "\n";
+    out << "gorna: " << ui->gorna->value() << "\n";
+    QMessageBox::information(this, "Zapis do pliku", "Konfiguracja została zapisana do pliku", QMessageBox::Ok);
+    plik.close();
+}
+
+void UkladAutomatycznejRegulacji::on_wgrajzPliku_clicked()
+{
+    WczytajzPliku();
+}
+
+void UkladAutomatycznejRegulacji::WczytajzPliku()
+{
+    QFile plik(nazwa);
+    if (!plik.open(QIODevice::ReadOnly | QIODevice::Text))
+    {
+        QMessageBox::warning(this, "Błąd otwarcia pliku", "Program nie mógł otworzyć pliku w celu wczytania konfiguracji", QMessageBox::Ok);
+        return;
+    }
+    QTextStream in(&plik);
+    while (!in.atEnd()) {
+        QString linia = in.readLine();
+        if (linia.startsWith("a:")) {
+            wektor_a = linia.mid(2).trimmed();
+        } else if (linia.startsWith("b:")) {
+            wektor_b = linia.mid(2).trimmed();
+        } else if (linia.startsWith("opoznienie:")) {
+            opoznienie = (linia.section(':', 1).trimmed().toDouble());
+        } else if (linia.startsWith("zaklocenie:")) {
+            zaklocenie = (linia.section(':', 1).trimmed().toDouble());
+        } else if (linia.startsWith("k:")) {
+            ui->te_k->setValue(linia.section(':', 1).trimmed().toDouble());
+        } else if (linia.startsWith("Ti:")) {
+            ui->te_ti->setValue(linia.section(':', 1).trimmed().toDouble());
+        } else if (linia.startsWith("Td:")) {
+            ui->te_td->setValue(linia.section(':', 1).trimmed().toDouble());
+        } else if (linia.startsWith("amplituda:")) {
+            ui->amplituda->setValue(linia.section(':', 1).trimmed().toDouble());
+        } else if (linia.startsWith("wypelnienie:")) {
+            ui->wypelnienie->setValue(linia.section(':', 1).trimmed().toDouble());
+        } else if (linia.startsWith("czas_aktywacji:")) {
+            ui->czas_aktywacji->setValue(linia.section(':', 1).trimmed().toDouble());
+        } else if (linia.startsWith("okres:")) {
+            ui->okres->setValue(linia.section(':', 1).trimmed().toDouble());
+        } else if (linia.startsWith("skladowa_stala:")) {
+            ui->skladowa_stala->setValue(linia.section(':', 1).trimmed().toDouble());
+        } else if(linia.startsWith("typ: ")){
+            QString typ = linia.section(':', 1).trimmed();
+            int index = ui->comboGWZ->findText(typ);
+            if(index != -1)
+                ui->comboGWZ->setCurrentIndex(index);
+        } else if(linia.startsWith("dolna: ")){
+            ui->dolna->setValue(linia.section(':', 1).trimmed().toDouble());
+        } else if(linia.startsWith("gorna: ")){
+            ui->gorna->setValue(linia.section(':', 1).trimmed().toDouble());
+        }
+    }
+    plik.close();
+}
+
+void UkladAutomatycznejRegulacji::ustawWykresy()
+{
+    // Wykres wyjścia modelu ARX
+    ui->customPlot->addGraph();
+    ui->customPlot->graph(0)->setPen(QPen(Qt::red, 1.5));
+    // Wartość Zadana
+    ui->customPlot->addGraph();
+    ui->customPlot->graph(1)->setPen(QPen(Qt::blue, 1.5));
+
+    // Uchyb
+    ui->customPlot_uchyb->addGraph();
+    ui->customPlot_uchyb->graph(0)->setPen(QPen(Qt::green, 1.5));
+
+    // Sterowanie
+    ui->customPlot_pid->addGraph();
+    ui->customPlot_pid->graph(0)->setPen(QPen(Qt::blue));
+    // Wzmocnienie
+    ui->customPlot_pid->addGraph();
+    ui->customPlot_pid->graph(1)->setPen(QPen(Qt::magenta));
+    // Ti - stała całkowania
+    ui->customPlot_pid->addGraph();
+    ui->customPlot_pid->graph(2)->setPen(QPen(Qt::red));
+    // Td - stała różniczkowania
+    ui->customPlot_pid->addGraph();
+    ui->customPlot_pid->graph(3)->setPen(QPen(Qt::green));
+
+    // Legenda Głównego wykresu
+    ui->customPlot->legend->setVisible(true);
+    ui->customPlot->graph(0)->setName("Wartość Regulowana");
+    ui->customPlot->graph(1)->setName("Wartość Zadana");
+    // Legenda PID
+    ui->customPlot_pid->legend->setVisible(true);
+    ui->customPlot_pid->graph(0)->setName("Sterowanie");
+    ui->customPlot_pid->graph(1)->setName("Wzmocnienie");
+    ui->customPlot_pid->graph(2)->setName("Stała Całkowania");
+    ui->customPlot_pid->graph(3)->setName("Stała Różniczkowania");
+
+    // Oznaczenia osi dla głównego wykresu
+    ui->customPlot->xAxis->setLabel("Czas [s]");
+    ui->customPlot->yAxis->setLabel("Wyjście");
+    ui->customPlot->xAxis->setRange(0, 10);
+    ui->customPlot->yAxis->setRange(-5, 5);
+
+    // Oznaczenia osi dla uchybu
+    ui->customPlot_uchyb->xAxis->setLabel("Czas [s]");
+    ui->customPlot_uchyb->yAxis->setLabel("Uchyb");
+    ui->customPlot_uchyb->xAxis->setRange(0, 10);
+    ui->customPlot_uchyb->yAxis->setRange(-5, 5);
+
+    // Oznaczenia osi dla PID
+    ui->customPlot_pid->xAxis->setLabel("Czas [s]");
+    ui->customPlot_pid->xAxis->setRange(0, 10);
+    ui->customPlot_pid->yAxis->setRange(-5, 5);
+}
+
+void UkladAutomatycznejRegulacji::on_ukryjLegendy_clicked()
+{
+    if(isLegenda == true)
+    {
+        ui->customPlot->legend->setVisible(false);
+        ui->customPlot_pid->legend->setVisible(false);
+        ui->customPlot_uchyb->legend->setVisible(false);
+        isLegenda = false;
+        ui->ukryjLegendy->setText("Pokaż legendy");
+    }
+    else
+    {
+        ui->customPlot->legend->setVisible(true);
+        ui->customPlot_pid->legend->setVisible(true);
+        ui->customPlot_uchyb->legend->setVisible(true);
+        isLegenda = true;
+        ui->ukryjLegendy->setText("Ukryj legendy");
+    }
+}
+
+void UkladAutomatycznejRegulacji::on_wgrajARX_clicked()
+{
+    Oknoarx okienko(this);
+
+    if (okienko.exec() == QDialog::Accepted)
+    {
+        wektor_a = okienko.getWartoscA();
+        wektor_b = okienko.getWartoscB();
+        opoznienie = okienko.getOpoznienie();
+        zaklocenie = okienko.getZaklocenie();
+        interwal = okienko.getInterwal();
+
+        isWgrane[0] = 1;
+        ustawARX(wektor_a, wektor_b, opoznienie, zaklocenie, interwal);
+
+    }
+
+}
+
+void UkladAutomatycznejRegulacji::on_wgrajPID_clicked()
+{
+    ustawPID();
+    isWgrane[1] = 1;
+}
+
+void UkladAutomatycznejRegulacji::on_wgrajGWZ_clicked()
+{
+    ustawGWZ();
+    isWgrane[2] = 1;
+}
+
+void UkladAutomatycznejRegulacji::on_reset_calka_clicked()
+{
+    us->regulator.reset();
+}
+
+
+
+
+
+
+void UkladAutomatycznejRegulacji::ustawShortcuty()
+{
+    QShortcut* zapis_skrot = new QShortcut(QKeySequence("Ctrl+S"), this);
+    QShortcut* wczytaj_skrot = new QShortcut(QKeySequence("Ctrl+L"), this);
+    QShortcut* start_skrot = new QShortcut(QKeySequence("Ctrl+F2"),this);
+    QShortcut* stop_skrot = new QShortcut(QKeySequence("Ctrl+F3"), this);
+    QShortcut* wyczysc_skrot = new QShortcut(QKeySequence("Ctrl+F4"), this);
+    QShortcut* reset_skrot = new QShortcut(QKeySequence("Ctrl+R"), this);
+    connect(zapis_skrot, &QShortcut::activated, this, &UkladAutomatycznejRegulacji::ZapisDoPliku);
+    connect(wczytaj_skrot, &QShortcut::activated, this, &UkladAutomatycznejRegulacji::WczytajzPliku);
+    connect(start_skrot, &QShortcut::activated, this, &UkladAutomatycznejRegulacji::on_symuluj_clicked);
+    connect(stop_skrot, &QShortcut::activated, this, &UkladAutomatycznejRegulacji::on_zatrzymaj_clicked);
+    connect(wyczysc_skrot, &QShortcut::activated, this, &UkladAutomatycznejRegulacji::on_wyczyscDane_clicked);
+    connect(reset_skrot, &QShortcut::activated, this, &UkladAutomatycznejRegulacji::on_resetuj_clicked);
+}
+
+void UkladAutomatycznejRegulacji::on_btn_start_server_clicked()
+{
+    bool ok;
+    int port = QInputDialog::getInt(this, "Port", "Podaj port serwera:", 12345, 0, 65535, 1, &ok);
+    if (ok) {
+        if (manager->startServer(port)) {
+            QMessageBox::information(this, "Serwer", "Serwer nasłuchuje na porcie " + QString::number(port));
+        }
+    }
+}
+
+
+void UkladAutomatycznejRegulacji::on_btn_polacz_klient_clicked()
+{
+    bool ok;
+    QString host = QInputDialog::getText(this, "Adres IP", "Podaj adres IP:", QLineEdit::Normal, "127.0.0.1", &ok);
+    if (!ok || host.isEmpty()) return;
+
+    int port = QInputDialog::getInt(this, "Port", "Podaj port:", 12345, 0, 65535, 1, &ok);
+    if (ok) {
+        manager->connectToServer(host, port);
+    }
+}
+
+
+void UkladAutomatycznejRegulacji::on_checkbox_trybSieciowy_stateChanged(int arg1)
+{
+    if(ui->checkbox_trybSieciowy->isChecked())
+    {
+        ui->wgrajARX->setEnabled(false);
+        ui->wgrajGWZ->setEnabled(false);
+        ui->wgrajPID->setEnabled(false);
+        ui->reset_calka->setEnabled(false);
+        ui->symuluj->setEnabled(false);
+        ui->zatrzymaj->setEnabled(false);
+        ui->resetuj->setEnabled(false);
+        ui->zapisDoPliku->setEnabled(false);
+        ui->wgrajzPliku->setEnabled(false);
+        ui->btn_polacz_klient->setEnabled(true);
+        ui->btn_start_server->setEnabled(true);
+    }
+    else
+    {
+        ui->wgrajARX->setEnabled(true);
+        ui->wgrajGWZ->setEnabled(true);
+        ui->wgrajPID->setEnabled(true);
+        ui->symuluj->setEnabled(true);
+        ui->zatrzymaj->setEnabled(true);
+        ui->resetuj->setEnabled(true);
+        ui->zapisDoPliku->setEnabled(true);
+        ui->wgrajzPliku->setEnabled(true);
+        ui->reset_calka->setEnabled(true);
+        ui->btn_polacz_klient->setEnabled(false);
+        ui->btn_start_server->setEnabled(false);
+    }
+}
+
