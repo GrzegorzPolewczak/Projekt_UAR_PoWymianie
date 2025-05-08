@@ -1,4 +1,5 @@
 #include "NetworkManager.h"
+#include "ModelARX.h"
 #include <QDebug>
 
 NetworkManager::NetworkManager(QObject *parent) : QObject(parent) {}
@@ -11,6 +12,8 @@ NetworkManager::~NetworkManager()
 
 bool NetworkManager::startServer(quint16 port)
 {
+    czyJestemSerwerem = true;
+
     server = new QTcpServer(this);
     connect(server, &QTcpServer::newConnection, this, &NetworkManager::onNewConnection);
 
@@ -25,6 +28,8 @@ bool NetworkManager::startServer(quint16 port)
 
 void NetworkManager::connectToServer(const QString &host, quint16 port)
 {
+    czyJestemSerwerem = false;
+
     socket = new QTcpSocket(this);
     connect(socket, &QTcpSocket::connected, this, &NetworkManager::onConnected);
 
@@ -33,20 +38,86 @@ void NetworkManager::connectToServer(const QString &host, quint16 port)
 
     socket->connectToHost(host, port);
 }
-
-void NetworkManager::onNewConnection()
-{
+void NetworkManager::onNewConnection() {
     socket = server->nextPendingConnection();
+    connect(socket, &QTcpSocket::readyRead, this, &NetworkManager::handleReadyRead);
     emit clientConnected();
 }
 
+
 void NetworkManager::onConnected()
 {
+    connect(socket, &QTcpSocket::readyRead, this, &NetworkManager::handleReadyRead);
     emit connectedToPeer();
 }
 
 void NetworkManager::onSocketError(QAbstractSocket::SocketError socketError)
 {
     Q_UNUSED(socketError);
-    emit connectionFailed(socket->errorString());
+
+    emit connectionFailed("Połączenie zostało zamknięte przez serwer.");
+
+    emit connectionLost();
 }
+
+void NetworkManager::sendSterowanie(double sterowanie)
+{
+    if (socket && socket->isOpen()) {
+        QByteArray dane;
+        QDataStream stream(&dane, QIODevice::WriteOnly);
+        stream.setVersion(QDataStream::Qt_5_15);
+        stream << sterowanie;
+        socket->write(dane);
+    }
+}
+
+void NetworkManager::handleReadyRead()
+{
+    if (!socket)
+        return;
+
+    QDataStream stream(socket);
+    stream.setVersion(QDataStream::Qt_5_15);
+
+    if (czyJestemSerwerem)
+    {
+        double sterowanie;
+        stream >> sterowanie;
+
+        if (modelGlobalny)
+        {
+            double wyjscie = modelGlobalny->wykonajKrok(sterowanie);
+
+            QByteArray odpowiedz;
+            QDataStream sOut(&odpowiedz, QIODevice::WriteOnly);
+            sOut.setVersion(QDataStream::Qt_5_15);
+            sOut << wyjscie;
+            socket->write(odpowiedz);
+            socket->flush();
+        }
+    }
+    else
+    {
+        double wyjscie;
+        stream >> wyjscie;
+
+        emit otrzymanoWyjscie(wyjscie);
+    }
+}
+
+
+
+void NetworkManager::setModel(ModelARX* m) {
+    modelGlobalny = m;
+}
+
+void NetworkManager::disconnectFromHost()
+{
+    if (socket) {
+        socket->disconnectFromHost();
+        socket->close();
+        emit connectionLost();
+    }
+}
+
+

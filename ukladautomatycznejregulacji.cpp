@@ -9,6 +9,18 @@ UkladAutomatycznejRegulacji::UkladAutomatycznejRegulacji(QWidget *parent)
     , ui(new Ui::UkladAutomatycznejRegulacji)
 {
     ui->setupUi(this);
+    ui->lampkaStatus->setFixedSize(20, 20);
+    ui->lampkaStatus->setVisible(true);
+    ui->lampkaStatus->setStyleSheet(
+        "background-color: #444;"
+        "border: 2px solid black;"
+        "border-radius: 10px;"
+        "min-width: 20px; min-height: 20px;"
+        "max-width: 20px; max-height: 20px;"
+        "margin: 2px;"
+        "box-shadow: 0 0 5px rgba(0,0,0,0.5);"
+        );
+    on_checkbox_trybSieciowy_stateChanged(0);
     us = new UkladSterowania();
     setFixedSize(1400, 780);
     ustawShortcuty();
@@ -21,43 +33,154 @@ UkladAutomatycznejRegulacji::UkladAutomatycznejRegulacji(QWidget *parent)
     ui->ukryjLegendy->setEnabled(false);
     ui->btn_polacz_klient->setEnabled(false);
     ui->btn_start_server->setEnabled(false);
-
+    ui->btn_rozlacz->setEnabled(false);
 
     manager = new NetworkManager(this);
+
     connect(manager, &NetworkManager::connectedToPeer, this, [=]() {
-            QMessageBox::information(this, "Połączono", "Połączono z serwerem");
-            ui->wgrajARX->setEnabled(true);
-            ui->wgrajGWZ->setEnabled(false);
-            ui->wgrajPID->setEnabled(false);
-            ui->symuluj->setEnabled(true);
-            ui->zatrzymaj->setEnabled(true);
-            ui->resetuj->setEnabled(true);
-            ui->zapisDoPliku->setEnabled(false);
-            ui->wgrajzPliku->setEnabled(false);
-            ui->reset_calka->setEnabled(false);
-            ui->btn_polacz_klient->setEnabled(true);
-            ui->btn_start_server->setEnabled(true);
+        QMessageBox::information(this, "Połączono", "Połączono z serwerem");
+        ui->wgrajARX->setEnabled(true);
+        ui->wgrajGWZ->setEnabled(true);
+        ui->wgrajPID->setEnabled(true);
+        ui->symuluj->setEnabled(true);
+        ui->zatrzymaj->setEnabled(true);
+        ui->resetuj->setEnabled(true);
+        ui->zapisDoPliku->setEnabled(false);
+        ui->wgrajzPliku->setEnabled(false);
+        ui->reset_calka->setEnabled(true);
+        ui->btn_polacz_klient->setEnabled(false);
+        ui->btn_start_server->setEnabled(false);
+        ui->btn_rozlacz->setEnabled(true);
     });
 
     connect(manager, &NetworkManager::clientConnected, this, [=]() {
-            QMessageBox::information(this, "Klient połączony", "Klient połączył się z serwerem");
-            ui->wgrajARX->setEnabled(false);
-            ui->wgrajGWZ->setEnabled(true);
-            ui->wgrajPID->setEnabled(true);
-            ui->symuluj->setEnabled(false);
-            ui->zatrzymaj->setEnabled(false);
-            ui->resetuj->setEnabled(false);
-            ui->zapisDoPliku->setEnabled(false);
-            ui->wgrajzPliku->setEnabled(false);
-            ui->reset_calka->setEnabled(true);
-            ui->btn_polacz_klient->setEnabled(true);
-            ui->btn_start_server->setEnabled(true);
+        QMessageBox::information(this, "Klient połączony", "Klient połączył się z serwerem");
+        ui->wgrajARX->setEnabled(false);
+        ui->wgrajGWZ->setEnabled(true);
+        ui->wgrajPID->setEnabled(true);
+        ui->symuluj->setEnabled(false);
+        ui->zatrzymaj->setEnabled(false);
+        ui->resetuj->setEnabled(false);
+        ui->zapisDoPliku->setEnabled(false);
+        ui->wgrajzPliku->setEnabled(false);
+        ui->reset_calka->setEnabled(true);
+        ui->btn_polacz_klient->setEnabled(false);
+        ui->btn_start_server->setEnabled(false);
+        ui->btn_rozlacz->setEnabled(true);
     });
 
     connect(manager, &NetworkManager::connectionFailed, this, [=](QString reason) {
-            QMessageBox::critical(this, "Błąd połączenia", reason);
+        QMessageBox::critical(this, "Błąd połączenia", reason);
     });
+
+    connect(manager, &NetworkManager::otrzymanoWyjscie, this, [=](double wyjscie_arx){
+        ostatniaWartoscObiektu = wyjscie_arx;
+        odpowiedzOdebrana = true;
+    });
+
+    connect(manager, &NetworkManager::connectionLost, this, [=](){
+        QMessageBox::critical(this, "Zerwano połączenie", "Połączenie sieciowe zostało przerwane.\nPrzechodzę do trybu lokalnego.");
+        ui->checkbox_trybSieciowy->blockSignals(true);
+        ui->checkbox_trybSieciowy->setChecked(false);
+        ui->checkbox_trybSieciowy->blockSignals(false);
+        ui->btn_rozlacz->setEnabled(false);
+        on_checkbox_trybSieciowy_stateChanged(0);
+    });
+
+    connect(ui->btn_rozlacz, &QPushButton::clicked, this, &UkladAutomatycznejRegulacji::rozlaczPolaczenie);
 }
+
+
+UkladAutomatycznejRegulacji::UkladAutomatycznejRegulacji(QWidget *parent, ModelARX* model)
+    : QMainWindow(parent)
+    , ui(new Ui::UkladAutomatycznejRegulacji)
+{
+    ui->setupUi(this);
+
+    manager = new NetworkManager(this);
+    if (model != nullptr)
+        manager->setModel(model);
+
+    on_checkbox_trybSieciowy_stateChanged(0);
+    us = new UkladSterowania();
+    setFixedSize(1400, 780);
+    ustawShortcuty();
+    ustawWykresy();
+    ui->gorna->setMaximum(1000);
+    ui->dolna->setMinimum(-1000);
+    timer = new QTimer(this);
+    connect(timer, &QTimer::timeout, this, &UkladAutomatycznejRegulacji::startSymulacji);
+    ui->zatrzymaj->setEnabled(false);
+    ui->ukryjLegendy->setEnabled(false);
+    ui->btn_polacz_klient->setEnabled(false);
+    ui->btn_start_server->setEnabled(false);
+    ui->btn_rozlacz->setEnabled(false);
+
+    connect(manager, &NetworkManager::connectedToPeer, this, [=]() {
+        QMessageBox::information(this, "Połączono", "Połączono z serwerem");
+        ui->wgrajARX->setEnabled(true);
+        ui->wgrajGWZ->setEnabled(true);
+        ui->wgrajPID->setEnabled(true);
+        ui->symuluj->setEnabled(true);
+        ui->zatrzymaj->setEnabled(true);
+        ui->resetuj->setEnabled(true);
+        ui->zapisDoPliku->setEnabled(false);
+        ui->wgrajzPliku->setEnabled(false);
+        ui->reset_calka->setEnabled(true);
+        ui->btn_polacz_klient->setEnabled(false);
+        ui->btn_start_server->setEnabled(false);
+        ui->btn_rozlacz->setEnabled(true);
+    });
+
+    connect(manager, &NetworkManager::clientConnected, this, [=]() {
+        QMessageBox::information(this, "Klient połączony", "Klient połączył się z serwerem");
+        ui->wgrajARX->setEnabled(false);
+        ui->wgrajGWZ->setEnabled(true);
+        ui->wgrajPID->setEnabled(true);
+        ui->symuluj->setEnabled(false);
+        ui->zatrzymaj->setEnabled(false);
+        ui->resetuj->setEnabled(false);
+        ui->zapisDoPliku->setEnabled(false);
+        ui->wgrajzPliku->setEnabled(false);
+        ui->reset_calka->setEnabled(true);
+        ui->btn_polacz_klient->setEnabled(false);
+        ui->btn_start_server->setEnabled(false);
+        ui->btn_rozlacz->setEnabled(true);
+    });
+
+    connect(manager, &NetworkManager::connectionFailed, this, [=](QString reason) {
+        QMessageBox::critical(this, "Błąd połączenia", reason);
+    });
+
+    connect(manager, &NetworkManager::otrzymanoWyjscie, this, [=](double wyjscie_arx){
+        ostatniaWartoscObiektu = wyjscie_arx;
+        odpowiedzOdebrana = true;
+    });
+
+    connect(manager, &NetworkManager::connectionLost, this, [=](){
+        QMessageBox::critical(this, "Zerwano połączenie", "Połączenie sieciowe zostało przerwane.\nPrzechodzę do trybu lokalnego.");
+        ui->checkbox_trybSieciowy->blockSignals(true);
+        ui->checkbox_trybSieciowy->setChecked(false);
+        ui->checkbox_trybSieciowy->blockSignals(false);
+        ui->btn_rozlacz->setEnabled(false);
+        on_checkbox_trybSieciowy_stateChanged(0);
+    });
+
+    connect(ui->btn_rozlacz, &QPushButton::clicked, this, &UkladAutomatycznejRegulacji::rozlaczPolaczenie);
+}
+
+void UkladAutomatycznejRegulacji::rozlaczPolaczenie()
+{
+    if (manager)
+    {
+        manager->disconnectFromHost();
+    }
+
+    ui->checkbox_trybSieciowy->setChecked(false);
+    QMessageBox::information(this, "Rozłączono", "Połączenie zostało zakończone.");
+    ui->btn_rozlacz->setEnabled(false);
+}
+
 
 UkladAutomatycznejRegulacji::~UkladAutomatycznejRegulacji()
 {
@@ -68,50 +191,86 @@ void UkladAutomatycznejRegulacji::startSymulacji()
 {
     time += 0.1;
 
-    double wartZadana = us->gwz.pobierzWartoscZadana(time);//git
-
-
+    double wartZadana = us->gwz.pobierzWartoscZadana(time);
     double wyjscie_pid = us->regulator.wykonajKrok(us->getUchyb());
 
-    double wartosc_zaklocenia = 0.0;
 
-    if (zaklocenie != 0.0)
+    double wyjscie_modelu = 0.0;
+    double uchyb = 0.0;
+
+    if (ui->checkbox_trybSieciowy->isChecked())
     {
-        std::random_device srng;
-        std::mt19937 rng;
-        rng.seed(srng());
-        std::normal_distribution<double> rozkladnormalny(0.0, this->zaklocenie);
+        odpowiedzOdebrana = false;
+        manager->sendSterowanie(wyjscie_pid);
 
-        wartosc_zaklocenia = rozkladnormalny(rng);
-        qDebug() << "Zakłócenie: " << zaklocenie;
-        qDebug() << "Wartość zakłócenia:" << wartosc_zaklocenia;
+        QElapsedTimer timeout;
+        timeout.start();
+
+        while (!odpowiedzOdebrana && timeout.elapsed() < 100) {
+            QCoreApplication::processEvents();
+        }
+
+        if (odpowiedzOdebrana) {
+            ui->lampkaStatus->setStyleSheet(
+                "background-color: green;"
+                "border: 2px solid black;"
+                "border-radius: 10px;"
+                "min-width: 20px; min-height: 20px;"
+                "max-width: 20px; max-height: 20px;"
+                );
+            ui->lampkaStatus->setToolTip("Status komunikacji: odpowiedź na czas");
+        } else {
+            ui->lampkaStatus->setStyleSheet(
+                "background-color: red;"
+                "border: 2px solid black;"
+                "border-radius: 10px;"
+                "min-width: 20px; min-height: 20px;"
+                "max-width: 20px; max-height: 20px;"
+                );
+            ui->lampkaStatus->setToolTip("Status komunikacji: brak odpowiedzi");
+        }
+
+        wyjscie_modelu = ostatniaWartoscObiektu;
+        uchyb = wartZadana - wyjscie_modelu;
+        us->setUchyb(uchyb);
+    }
+    else
+    {
+
+        double wartosc_zaklocenia = 0.0;
+
+        if (zaklocenie != 0.0)
+        {
+            std::random_device srng;
+            std::mt19937 rng;
+            rng.seed(srng());
+            std::normal_distribution<double> rozkladnormalny(0.0, zaklocenie);
+            wartosc_zaklocenia = rozkladnormalny(rng);
+        }
+
+        wyjscie_modelu = us->model.wykonajKrok(wartZadana) + wartosc_zaklocenia;
+        uchyb = wartZadana - wyjscie_modelu;
+        us->setUchyb(uchyb);
+
+        ui->lampkaStatus->setStyleSheet(
+            "background-color: green;"
+            "border: 2px solid black;"
+            "border-radius: 10px;"
+            "min-width: 20px; min-height: 20px;"
+            "max-width: 20px; max-height: 20px;"
+            );
+        ui->lampkaStatus->setToolTip("Tryb lokalny – brak połączenia sieciowego");
     }
 
-    double wyjscie_arx = us->model.wykonajKrok(wartZadana) + wartosc_zaklocenia;
-    double uchyb = wartZadana - wyjscie_arx;
-    us->setUchyb(uchyb);
-
-    double wzmocnienie = us->regulator.getK();//git
-
-    double Ti = us->regulator.getTi();//git
-    double Td = us->regulator.getTd();//git
-    //uchyb = wartZadana - wyjscie_arx; //zle
 
 
-    //ARX
-    ui->customPlot->graph(0)->addData(time, wyjscie_arx);//Wartosc regulowana
-    //Uchyb
-    ui->customPlot_uchyb->graph(0)->addData(time, uchyb);
-    //Wartość Zadana
+    ui->customPlot->graph(0)->addData(time, wyjscie_modelu);
     ui->customPlot->graph(1)->addData(time, wartZadana);
-    //PID
-    ui->customPlot_pid->graph(0)->addData(time, wyjscie_pid);//Sterowanie
-
-    ui->customPlot_pid->graph(1)->addData(time, wzmocnienie);
-
-    ui->customPlot_pid->graph(2)->addData(time, Ti);
-
-    ui->customPlot_pid->graph(3)->addData(time, Td);
+    ui->customPlot_uchyb->graph(0)->addData(time, uchyb);
+    ui->customPlot_pid->graph(0)->addData(time, wyjscie_pid);
+    ui->customPlot_pid->graph(1)->addData(time, us->regulator.getK());
+    ui->customPlot_pid->graph(2)->addData(time, us->regulator.getTi());
+    ui->customPlot_pid->graph(3)->addData(time, us->regulator.getTd());
 
     if (time > ui->customPlot->xAxis->range().upper)
     {
@@ -119,32 +278,42 @@ void UkladAutomatycznejRegulacji::startSymulacji()
         ui->customPlot_uchyb->xAxis->setRange(time, 10, Qt::AlignRight);
         ui->customPlot_pid->xAxis->setRange(time, 10, Qt::AlignRight);
     }
+
     ui->customPlot->replot();
     ui->customPlot_pid->replot();
+
     ui->customPlot_uchyb->replot();
-    ui->customPlot->xAxis->rescale();
-    ui->customPlot_pid->xAxis->rescale();
-    ui->customPlot_uchyb->xAxis->rescale();
-    ui->customPlot->yAxis->rescale();
-    ui->customPlot_pid->yAxis->rescale();
-    ui->customPlot_uchyb->yAxis->rescale();
+
 }
+
 
 void UkladAutomatycznejRegulacji::on_symuluj_clicked()
 {
-    bool czyWgrane = true;
-    for(int i = 0; i < 3; i++){
-        if(isWgrane[i] == 0) {
-            czyWgrane = false;
+
+    bool daneOK = true;
+
+    if (!ui->checkbox_trybSieciowy->isChecked()) {
+        for (int i = 0; i < 3; i++) {
+            if (isWgrane[i] == 0) {
+                daneOK = false;
+            }
         }
     }
-    if(czyWgrane == true)
-    {
-        if(!timer->isActive()){
-            int interwalCzasowy = interwal; // Pobranie wartości interwału ze spinboxa
-            timer->start(interwalCzasowy);  // Ustawienie nowego interwału timera
 
-            // Dezaktywacja przycisku Start i aktywacja Stop
+    else {
+        if (isWgrane[1] == 0) {
+            daneOK = false;
+        }
+        if (isWgrane[2] == 0) {
+            daneOK = false;
+        }
+    }
+
+    if (daneOK)
+    {
+        if (!timer->isActive()) {
+            int interwalCzasowy = interwal;
+            timer->start(interwalCzasowy);
             ui->symuluj->setEnabled(false);
             ui->zatrzymaj->setEnabled(true);
             ui->resetuj->setEnabled(true);
@@ -153,16 +322,17 @@ void UkladAutomatycznejRegulacji::on_symuluj_clicked()
     }
     else
     {
-        if(isWgrane[0] == false){
-            QMessageBox::warning(this, "Błąd startu symulacji", "Przed rozpoczęciem symulacji upewnij się że dane MODELU ARX zostały poprawnie wgrane do programu");
+        if (!ui->checkbox_trybSieciowy->isChecked() && isWgrane[0] == false) {
+            QMessageBox::warning(this, "Błąd startu symulacji", "Brakuje danych MODELU ARX.");
         }
-        if(isWgrane[1] == false){
-            QMessageBox::warning(this, "Błąd startu symulacji", "Przed rozpoczęciem symulacji upewnij się że dane REGULATORA PID zostały poprawnie wgrane do programu");
+        if (isWgrane[1] == false) {
+            QMessageBox::warning(this, "Błąd startu symulacji", "Brakuje danych REGULATORA PID.");
         }
-        if(isWgrane[2] == false){
-            QMessageBox::warning(this, "Błąd startu symulacji", "Przed rozpoczęciem symulacji upewnij się że dane GENERATORA WARTOŚCI ZADANEJ zostały poprawnie wgrane do programu");
+        if (isWgrane[2] == false) {
+            QMessageBox::warning(this, "Błąd startu symulacji", "Brakuje danych GENERATORA WARTOŚCI ZADANEJ.");
         }
     }
+
 }
 
 void UkladAutomatycznejRegulacji::on_zatrzymaj_clicked()
@@ -175,6 +345,8 @@ void UkladAutomatycznejRegulacji::on_zatrzymaj_clicked()
     }
 }
 
+
+
 void UkladAutomatycznejRegulacji::on_resetuj_clicked()
 {
     if (timer->isActive())
@@ -182,11 +354,9 @@ void UkladAutomatycznejRegulacji::on_resetuj_clicked()
         timer->stop();
     }
 
-    // RESET WARTOŚCI SYMULACJI - CZAS I UCHYB
     time = 0.0;
     uchyb = 0.0;
 
-    // CZYSZCZENIE WYKRESÓW
     ui->customPlot->graph(0)->data()->clear();
     ui->customPlot->graph(1)->data()->clear();
     ui->customPlot_uchyb->graph(0)->data()->clear();
@@ -195,18 +365,16 @@ void UkladAutomatycznejRegulacji::on_resetuj_clicked()
     ui->customPlot_pid->graph(2)->data()->clear();
     ui->customPlot_pid->graph(3)->data()->clear();
 
-    // AKTUALIZACJA WYKRESÓW
     ui->customPlot->replot();
     ui->customPlot_uchyb->replot();
     ui->customPlot_pid->replot();
 
-    // ZRESETOWANIE PRZYCISKÓW
+
     ui->symuluj->setEnabled(true);
     ui->zatrzymaj->setEnabled(false);
     ui->resetuj->setEnabled(false);
     ui->ukryjLegendy->setEnabled(false);
 
-    // Czyszczenie pól edycyjnych
     ui->te_k->clear();
     ui->te_ti->clear();
     ui->te_td->clear();
@@ -236,57 +404,6 @@ void UkladAutomatycznejRegulacji::on_wyczyscDane_clicked()
 }
 
 
-void UkladAutomatycznejRegulacji::ustawARX(QString wektor_a, QString wektor_b, int opoznienie, double zaklocenie, double interwal)
-{
-    bool ok;
-    std::vector<double> a;
-    std::vector<double> b;
-
-    QString text_a = wektor_a;
-    QString text_b = wektor_b;
-
-    QStringList aList = text_a.split(" ");
-    QStringList bList = text_b.split(" ");
-
-    for (const QString &a_i : aList)
-    {
-        double value = a_i.toDouble(&ok);
-        if (ok) {
-            a.push_back(value);
-        }
-        else
-        {
-            QMessageBox::warning(this, "Błąd wartości", "Podaj poprawną wartość wektora A!", QMessageBox::Ok);
-        }
-    }
-
-    for (const QString &b_i : bList)
-    {
-        double value = b_i.toDouble(&ok);
-        if (ok) {
-            b.push_back(value);
-        }
-        else
-        {
-             QMessageBox::warning(this, "Błąd wartości", "Podaj poprawną wartość wektora B!", QMessageBox::Ok);
-        }
-    }
-
-    int delay = opoznienie;
-    double disruption = zaklocenie;
-    if(disruption >= 0.0)
-    {
-        us->model.setZaklocenie(disruption);
-    }
-
-    us->model.setA(a);
-    us->model.setB(b);
-    us->model.setOpoznienie(delay);
-    us->model.setZaklocenie(disruption);
-    int interwalCzasowy = interwal;
-    timer->setInterval(interwalCzasowy);
-
-}
 
 void UkladAutomatycznejRegulacji::ustawPID()
 {
@@ -303,6 +420,7 @@ void UkladAutomatycznejRegulacji::ustawPID()
     us->regulator.setGranica(dolna, gorna);
     us->regulator.setAW(czyAW);
     us->regulator.ustawMetodeCalkowania(metodaCalkowania);
+
 }
 
 void UkladAutomatycznejRegulacji::ustawGWZ()
@@ -439,7 +557,7 @@ void UkladAutomatycznejRegulacji::WczytajzPliku()
 
 void UkladAutomatycznejRegulacji::ustawWykresy()
 {
-    // Wykres wyjścia modelu ARX
+
     ui->customPlot->addGraph();
     ui->customPlot->graph(0)->setPen(QPen(Qt::red, 1.5));
     // Wartość Zadana
@@ -463,30 +581,29 @@ void UkladAutomatycznejRegulacji::ustawWykresy()
     ui->customPlot_pid->addGraph();
     ui->customPlot_pid->graph(3)->setPen(QPen(Qt::green));
 
-    // Legenda Głównego wykresu
+
     ui->customPlot->legend->setVisible(true);
     ui->customPlot->graph(0)->setName("Wartość Regulowana");
     ui->customPlot->graph(1)->setName("Wartość Zadana");
-    // Legenda PID
+
     ui->customPlot_pid->legend->setVisible(true);
     ui->customPlot_pid->graph(0)->setName("Sterowanie");
     ui->customPlot_pid->graph(1)->setName("Wzmocnienie");
     ui->customPlot_pid->graph(2)->setName("Stała Całkowania");
     ui->customPlot_pid->graph(3)->setName("Stała Różniczkowania");
 
-    // Oznaczenia osi dla głównego wykresu
+
     ui->customPlot->xAxis->setLabel("Czas [s]");
     ui->customPlot->yAxis->setLabel("Wyjście");
     ui->customPlot->xAxis->setRange(0, 10);
     ui->customPlot->yAxis->setRange(-5, 5);
 
-    // Oznaczenia osi dla uchybu
     ui->customPlot_uchyb->xAxis->setLabel("Czas [s]");
     ui->customPlot_uchyb->yAxis->setLabel("Uchyb");
     ui->customPlot_uchyb->xAxis->setRange(0, 10);
     ui->customPlot_uchyb->yAxis->setRange(-5, 5);
 
-    // Oznaczenia osi dla PID
+
     ui->customPlot_pid->xAxis->setLabel("Czas [s]");
     ui->customPlot_pid->xAxis->setRange(0, 10);
     ui->customPlot_pid->yAxis->setRange(-5, 5);
@@ -531,6 +648,8 @@ void UkladAutomatycznejRegulacji::on_wgrajARX_clicked()
 
 }
 
+
+
 void UkladAutomatycznejRegulacji::on_wgrajPID_clicked()
 {
     ustawPID();
@@ -549,8 +668,48 @@ void UkladAutomatycznejRegulacji::on_reset_calka_clicked()
 }
 
 
+void UkladAutomatycznejRegulacji::ustawARX(QString wektor_a, QString wektor_b, int opoznienie, double zaklocenie, double interwal)
+{
+    bool ok;
+    std::vector<double> a;
+    std::vector<double> b;
 
+    QStringList aList = wektor_a.split(" ");
+    QStringList bList = wektor_b.split(" ");
 
+    for (const QString &a_i : aList)
+    {
+        double value = a_i.toDouble(&ok);
+        if (ok)
+            a.push_back(value);
+        else
+            QMessageBox::warning(this, "Błąd wartości", "Podaj poprawną wartość wektora A!", QMessageBox::Ok);
+    }
+
+    for (const QString &b_i : bList)
+    {
+        double value = b_i.toDouble(&ok);
+        if (ok)
+            b.push_back(value);
+        else
+            QMessageBox::warning(this, "Błąd wartości", "Podaj poprawną wartość wektora B!", QMessageBox::Ok);
+    }
+
+    us->model.setA(a);
+    us->model.setB(b);
+    us->model.setOpoznienie(opoznienie);
+    us->model.setZaklocenie(zaklocenie);
+
+    timer->setInterval(static_cast<int>(interwal));
+
+    qDebug() << "Wektor A:" << a;
+    qDebug() << "Wektor B:" << b;
+
+    if (ui->checkbox_trybSieciowy->isChecked()) {
+        manager->setModel(&(us->model));
+        qDebug() << "[ustawARX] Przypisano model do NetworkManager";
+    }
+}
 
 
 void UkladAutomatycznejRegulacji::ustawShortcuty()
@@ -578,6 +737,20 @@ void UkladAutomatycznejRegulacji::on_btn_start_server_clicked()
             QMessageBox::information(this, "Serwer", "Serwer nasłuchuje na porcie " + QString::number(port));
         }
     }
+
+    connect(manager, &NetworkManager::clientConnected, this, [=]() {
+        QMessageBox::information(this, "Klient połączony", "Klient połączył się z serwerem");
+
+        ui->wgrajARX->setEnabled(true);
+        ui->wgrajGWZ->setEnabled(false);
+        ui->wgrajPID->setEnabled(false);
+        ui->symuluj->setEnabled(false);
+        ui->resetuj->setEnabled(false);
+        ui->zatrzymaj->setEnabled(false);
+        ui->reset_calka->setEnabled(false);
+        ui->btn_polacz_klient->setEnabled(false);
+        ui->btn_start_server->setEnabled(false);
+    });
 }
 
 
@@ -591,27 +764,42 @@ void UkladAutomatycznejRegulacji::on_btn_polacz_klient_clicked()
     if (ok) {
         manager->connectToServer(host, port);
     }
+
+    connect(manager, &NetworkManager::connectedToPeer, this, [=]() {
+        QMessageBox::information(this, "Połączono", "Połączono z serwerem");
+            ustawPID();
+        ui->wgrajGWZ->setEnabled(true);
+        ui->wgrajPID->setEnabled(true);
+        ui->symuluj->setEnabled(true);
+        ui->resetuj->setEnabled(true);
+        ui->zatrzymaj->setEnabled(false);
+        ui->wgrajARX->setEnabled(false);
+        ui->reset_calka->setEnabled(true);
+        ui->btn_polacz_klient->setEnabled(false);
+        ui->btn_start_server->setEnabled(false);
+    });
 }
 
 
 void UkladAutomatycznejRegulacji::on_checkbox_trybSieciowy_stateChanged(int arg1)
 {
-    if(ui->checkbox_trybSieciowy->isChecked())
-    {
-        ui->wgrajARX->setEnabled(false);
-        ui->wgrajGWZ->setEnabled(false);
-        ui->wgrajPID->setEnabled(false);
-        ui->reset_calka->setEnabled(false);
-        ui->symuluj->setEnabled(false);
-        ui->zatrzymaj->setEnabled(false);
-        ui->resetuj->setEnabled(false);
-        ui->zapisDoPliku->setEnabled(false);
-        ui->wgrajzPliku->setEnabled(false);
-        ui->btn_polacz_klient->setEnabled(true);
-        ui->btn_start_server->setEnabled(true);
+    if (arg1 == Qt::Checked) {
+        QMessageBox::StandardButton confirm = QMessageBox::question(this, "Aktywacja trybu sieciowego",
+                                                                    "Czy na pewno chcesz włączyć tryb sieciowy?\nUpewnij się, że druga aplikacja jest gotowa.");
+
+        if (confirm != QMessageBox::Yes) {
+            ui->checkbox_trybSieciowy->blockSignals(true);
+            ui->checkbox_trybSieciowy->setChecked(false);
+            ui->checkbox_trybSieciowy->blockSignals(false);
+            return;
+        }
     }
-    else
+
+    bool sieciowy = (ui->checkbox_trybSieciowy->isChecked());
+
+    if (!sieciowy)
     {
+
         ui->wgrajARX->setEnabled(true);
         ui->wgrajGWZ->setEnabled(true);
         ui->wgrajPID->setEnabled(true);
@@ -623,6 +811,20 @@ void UkladAutomatycznejRegulacji::on_checkbox_trybSieciowy_stateChanged(int arg1
         ui->reset_calka->setEnabled(true);
         ui->btn_polacz_klient->setEnabled(false);
         ui->btn_start_server->setEnabled(false);
+        return;
     }
+
+    ui->wgrajARX->setEnabled(false);
+    ui->wgrajGWZ->setEnabled(false);
+    ui->wgrajPID->setEnabled(false);
+    ui->symuluj->setEnabled(false);
+    ui->zatrzymaj->setEnabled(false);
+    ui->resetuj->setEnabled(false);
+    ui->zapisDoPliku->setEnabled(false);
+    ui->wgrajzPliku->setEnabled(false);
+    ui->reset_calka->setEnabled(false);
+    ui->btn_polacz_klient->setEnabled(true);
+    ui->btn_start_server->setEnabled(true);
 }
+
 
