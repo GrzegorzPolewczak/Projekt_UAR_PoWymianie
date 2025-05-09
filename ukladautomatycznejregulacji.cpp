@@ -38,8 +38,9 @@ UkladAutomatycznejRegulacji::UkladAutomatycznejRegulacji(QWidget *parent)
     manager = new NetworkManager(this);
 
     connect(manager, &NetworkManager::connectedToPeer, this, [=]() {
+        ui->lbAdresPolaczenia->setText(manager->peerAddressString());
         QMessageBox::information(this, "Połączono", "Połączono z serwerem");
-        ui->wgrajARX->setEnabled(true);
+        ui->wgrajARX->setEnabled(false);
         ui->wgrajGWZ->setEnabled(true);
         ui->wgrajPID->setEnabled(true);
         ui->symuluj->setEnabled(true);
@@ -48,32 +49,38 @@ UkladAutomatycznejRegulacji::UkladAutomatycznejRegulacji(QWidget *parent)
         ui->zapisDoPliku->setEnabled(false);
         ui->wgrajzPliku->setEnabled(false);
         ui->reset_calka->setEnabled(true);
+
         ui->btn_polacz_klient->setEnabled(false);
         ui->btn_start_server->setEnabled(false);
         ui->btn_rozlacz->setEnabled(true);
     });
 
-    connect(manager, &NetworkManager::clientConnected, this, [=]() {
+    connect(manager, &NetworkManager::clientConnected, this, [=]() { 
         QMessageBox::information(this, "Klient połączony", "Klient połączył się z serwerem");
-        ui->wgrajARX->setEnabled(false);
-        ui->wgrajGWZ->setEnabled(true);
-        ui->wgrajPID->setEnabled(true);
+        ui->wgrajARX->setEnabled(true);
+        ui->wgrajGWZ->setEnabled(false);
+        ui->wgrajPID->setEnabled(false);
         ui->symuluj->setEnabled(false);
         ui->zatrzymaj->setEnabled(false);
         ui->resetuj->setEnabled(false);
         ui->zapisDoPliku->setEnabled(false);
         ui->wgrajzPliku->setEnabled(false);
-        ui->reset_calka->setEnabled(true);
+        ui->reset_calka->setEnabled(false);
+
         ui->btn_polacz_klient->setEnabled(false);
         ui->btn_start_server->setEnabled(false);
         ui->btn_rozlacz->setEnabled(true);
+
+        ui->lbAdresPolaczenia->setText(manager->peerAddressString());
     });
 
     connect(manager, &NetworkManager::connectionFailed, this, [=](QString reason) {
+        ui->lbAdresPolaczenia->setText(reason);
         QMessageBox::critical(this, "Błąd połączenia", reason);
     });
 
     connect(manager, &NetworkManager::otrzymanoWyjscie, this, [=](double wyjscie_arx){
+
         ostatniaWartoscObiektu = wyjscie_arx;
         odpowiedzOdebrana = true;
     });
@@ -85,6 +92,8 @@ UkladAutomatycznejRegulacji::UkladAutomatycznejRegulacji(QWidget *parent)
         ui->checkbox_trybSieciowy->blockSignals(false);
         ui->btn_rozlacz->setEnabled(false);
         on_checkbox_trybSieciowy_stateChanged(0);
+
+        ui->lbAdresPolaczenia->clear();
     });
 
     connect(ui->btn_rozlacz, &QPushButton::clicked, this, &UkladAutomatycznejRegulacji::rozlaczPolaczenie);
@@ -118,7 +127,7 @@ UkladAutomatycznejRegulacji::UkladAutomatycznejRegulacji(QWidget *parent, ModelA
 
     connect(manager, &NetworkManager::connectedToPeer, this, [=]() {
         QMessageBox::information(this, "Połączono", "Połączono z serwerem");
-        ui->wgrajARX->setEnabled(true);
+        ui->wgrajARX->setEnabled(false);
         ui->wgrajGWZ->setEnabled(true);
         ui->wgrajPID->setEnabled(true);
         ui->symuluj->setEnabled(true);
@@ -130,22 +139,26 @@ UkladAutomatycznejRegulacji::UkladAutomatycznejRegulacji(QWidget *parent, ModelA
         ui->btn_polacz_klient->setEnabled(false);
         ui->btn_start_server->setEnabled(false);
         ui->btn_rozlacz->setEnabled(true);
+
+        ui->lbAdresPolaczenia->setText(manager->peerAddressString());
     });
 
     connect(manager, &NetworkManager::clientConnected, this, [=]() {
         QMessageBox::information(this, "Klient połączony", "Klient połączył się z serwerem");
-        ui->wgrajARX->setEnabled(false);
-        ui->wgrajGWZ->setEnabled(true);
-        ui->wgrajPID->setEnabled(true);
+        ui->wgrajARX->setEnabled(true);
+        ui->wgrajGWZ->setEnabled(false);
+        ui->wgrajPID->setEnabled(false);
         ui->symuluj->setEnabled(false);
         ui->zatrzymaj->setEnabled(false);
         ui->resetuj->setEnabled(false);
         ui->zapisDoPliku->setEnabled(false);
         ui->wgrajzPliku->setEnabled(false);
-        ui->reset_calka->setEnabled(true);
+        ui->reset_calka->setEnabled(false);
         ui->btn_polacz_klient->setEnabled(false);
         ui->btn_start_server->setEnabled(false);
         ui->btn_rozlacz->setEnabled(true);
+
+        ui->lbAdresPolaczenia->setText(manager->peerAddressString());
     });
 
     connect(manager, &NetworkManager::connectionFailed, this, [=](QString reason) {
@@ -164,6 +177,8 @@ UkladAutomatycznejRegulacji::UkladAutomatycznejRegulacji(QWidget *parent, ModelA
         ui->checkbox_trybSieciowy->blockSignals(false);
         ui->btn_rozlacz->setEnabled(false);
         on_checkbox_trybSieciowy_stateChanged(0);
+
+        ui->lbAdresPolaczenia->clear();
     });
 
     connect(ui->btn_rozlacz, &QPushButton::clicked, this, &UkladAutomatycznejRegulacji::rozlaczPolaczenie);
@@ -171,9 +186,16 @@ UkladAutomatycznejRegulacji::UkladAutomatycznejRegulacji(QWidget *parent, ModelA
 
 void UkladAutomatycznejRegulacji::rozlaczPolaczenie()
 {
+    auto confirm = QMessageBox::question(this,("Potwierdzenie rozłączenia"),("Czy na pewno chcesz zakończyć połączenie sieciowe?"),QMessageBox::Yes | QMessageBox::No);
+    if (confirm != QMessageBox::Yes)
+    {
+       return;
+    }
+
     if (manager)
     {
         manager->disconnectFromHost();
+        manager->stopServer();
     }
 
     ui->checkbox_trybSieciowy->setChecked(false);
@@ -201,13 +223,13 @@ void UkladAutomatycznejRegulacji::startSymulacji()
     if (ui->checkbox_trybSieciowy->isChecked())
     {
         odpowiedzOdebrana = false;
-        manager->sendSterowanie(wyjscie_pid);
+        manager->sendSterowanie(wartZadana);
 
         QElapsedTimer timeout;
         timeout.start();
 
         while (!odpowiedzOdebrana && timeout.elapsed() < 100) {
-            QCoreApplication::processEvents();
+           QCoreApplication::processEvents();
         }
 
         if (odpowiedzOdebrana) {
@@ -249,6 +271,7 @@ void UkladAutomatycznejRegulacji::startSymulacji()
         }
 
         wyjscie_modelu = us->model.wykonajKrok(wartZadana) + wartosc_zaklocenia;
+
         uchyb = wartZadana - wyjscie_modelu;
         us->setUchyb(uchyb);
 
@@ -738,19 +761,19 @@ void UkladAutomatycznejRegulacji::on_btn_start_server_clicked()
         }
     }
 
-    connect(manager, &NetworkManager::clientConnected, this, [=]() {
-        QMessageBox::information(this, "Klient połączony", "Klient połączył się z serwerem");
+    // connect(manager, &NetworkManager::clientConnected, this, [=]() {
+    //     QMessageBox::information(this, "Klient połączony", "Klient połączył się z serwerem");
 
-        ui->wgrajARX->setEnabled(true);
-        ui->wgrajGWZ->setEnabled(false);
-        ui->wgrajPID->setEnabled(false);
-        ui->symuluj->setEnabled(false);
-        ui->resetuj->setEnabled(false);
-        ui->zatrzymaj->setEnabled(false);
-        ui->reset_calka->setEnabled(false);
-        ui->btn_polacz_klient->setEnabled(false);
-        ui->btn_start_server->setEnabled(false);
-    });
+    //     ui->wgrajARX->setEnabled(true);
+    //     ui->wgrajGWZ->setEnabled(false);
+    //     ui->wgrajPID->setEnabled(false);
+    //     ui->symuluj->setEnabled(false);
+    //     ui->resetuj->setEnabled(false);
+    //     ui->zatrzymaj->setEnabled(false);
+    //     ui->reset_calka->setEnabled(false);
+    //     ui->btn_polacz_klient->setEnabled(false);
+    //     ui->btn_start_server->setEnabled(false);
+    // });
 }
 
 
@@ -765,19 +788,19 @@ void UkladAutomatycznejRegulacji::on_btn_polacz_klient_clicked()
         manager->connectToServer(host, port);
     }
 
-    connect(manager, &NetworkManager::connectedToPeer, this, [=]() {
-        QMessageBox::information(this, "Połączono", "Połączono z serwerem");
-            ustawPID();
-        ui->wgrajGWZ->setEnabled(true);
-        ui->wgrajPID->setEnabled(true);
-        ui->symuluj->setEnabled(true);
-        ui->resetuj->setEnabled(true);
-        ui->zatrzymaj->setEnabled(false);
-        ui->wgrajARX->setEnabled(false);
-        ui->reset_calka->setEnabled(true);
-        ui->btn_polacz_klient->setEnabled(false);
-        ui->btn_start_server->setEnabled(false);
-    });
+    // connect(manager, &NetworkManager::connectedToPeer, this, [=]() {
+    //     QMessageBox::information(this, "Połączono", "Połączono z serwerem");
+    //         ustawPID();
+    //     ui->wgrajGWZ->setEnabled(true);
+    //     ui->wgrajPID->setEnabled(true);
+    //     ui->symuluj->setEnabled(true);
+    //     ui->resetuj->setEnabled(true);
+    //     ui->zatrzymaj->setEnabled(false);
+    //     ui->wgrajARX->setEnabled(false);
+    //     ui->reset_calka->setEnabled(true);
+    //     ui->btn_polacz_klient->setEnabled(false);
+    //     ui->btn_start_server->setEnabled(false);
+    // });
 }
 
 

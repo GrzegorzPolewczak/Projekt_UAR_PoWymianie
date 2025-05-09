@@ -21,11 +21,14 @@ public:
     void sendSterowanie(double sterowanie);
     void setModel(ModelARX* m);
 
-     void disconnectFromHost();
+    void disconnectFromHost();
+    void stopServer();
 
     bool isClient() const { return socket != nullptr && socket->isOpen(); }
     bool isServer() const { return server != nullptr && server->isListening(); }
 
+
+    QString peerAddressString() const;
 
 signals:
     void connectedToPeer();
@@ -33,6 +36,7 @@ signals:
     void clientConnected();
     void otrzymanoWyjscie(double wyjscie);
     void connectionLost();
+    //void connectionFailed(const QString &msg);
 
 private slots:
     void onNewConnection();
@@ -46,6 +50,8 @@ private:
     ModelARX* modelGlobalny = nullptr;
     QTcpServer *server = nullptr;
     QTcpSocket *socket = nullptr;
+
+    double ostatnieWyjscie = 0.0;
 
     bool czyJestemSerwerem = false;
 };

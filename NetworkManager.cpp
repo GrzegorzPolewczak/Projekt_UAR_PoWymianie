@@ -1,5 +1,7 @@
 #include "NetworkManager.h"
 #include "ModelARX.h"
+#include <QHostAddress>
+#include <QAbstractSocket>
 #include <QDebug>
 
 NetworkManager::NetworkManager(QObject *parent) : QObject(parent) {}
@@ -13,6 +15,12 @@ NetworkManager::~NetworkManager()
 bool NetworkManager::startServer(quint16 port)
 {
     czyJestemSerwerem = true;
+
+    if (server && server->isListening())
+    {
+        server->close();
+        delete server; server = nullptr;
+    }
 
     server = new QTcpServer(this);
     connect(server, &QTcpServer::newConnection, this, &NetworkManager::onNewConnection);
@@ -33,14 +41,17 @@ void NetworkManager::connectToServer(const QString &host, quint16 port)
     socket = new QTcpSocket(this);
     connect(socket, &QTcpSocket::connected, this, &NetworkManager::onConnected);
 
-    connect(socket, QOverload<QAbstractSocket::SocketError>::of(&QAbstractSocket::errorOccurred),
-            this, &NetworkManager::onSocketError);
+    connect(socket, &QTcpSocket::disconnected, this, &NetworkManager::connectionLost);
+
+    connect(socket, QOverload<QAbstractSocket::SocketError>::of(&QAbstractSocket::errorOccurred), this, &NetworkManager::onSocketError);
 
     socket->connectToHost(host, port);
 }
 void NetworkManager::onNewConnection() {
     socket = server->nextPendingConnection();
     connect(socket, &QTcpSocket::readyRead, this, &NetworkManager::handleReadyRead);
+    connect(socket, &QTcpSocket::disconnected, this, &NetworkManager::connectionLost);
+    connect(socket,QOverload<QAbstractSocket::SocketError>::of(&QTcpSocket::errorOccurred), this, &NetworkManager::onSocketError);
     emit clientConnected();
 }
 
@@ -56,8 +67,6 @@ void NetworkManager::onSocketError(QAbstractSocket::SocketError socketError)
     Q_UNUSED(socketError);
 
     emit connectionFailed("Połączenie zostało zamknięte przez serwer.");
-
-    emit connectionLost();
 }
 
 void NetworkManager::sendSterowanie(double sterowanie)
@@ -86,8 +95,9 @@ void NetworkManager::handleReadyRead()
 
         if (modelGlobalny)
         {
+           // qDebug() << "[SERVER] otrzymano sterowanie =" << sterowanie;
             double wyjscie = modelGlobalny->wykonajKrok(sterowanie);
-
+            //qDebug() << "[SERVER] obliczone wyjscie =" << wyjscie;
             QByteArray odpowiedz;
             QDataStream sOut(&odpowiedz, QIODevice::WriteOnly);
             sOut.setVersion(QDataStream::Qt_5_15);
@@ -100,6 +110,9 @@ void NetworkManager::handleReadyRead()
     {
         double wyjscie;
         stream >> wyjscie;
+        ostatnieWyjscie = wyjscie;
+
+        //qDebug() << "[CLIENT] odebrano wyjscie =" << wyjscie;
 
         emit otrzymanoWyjscie(wyjscie);
     }
@@ -116,8 +129,47 @@ void NetworkManager::disconnectFromHost()
     if (socket) {
         socket->disconnectFromHost();
         socket->close();
-        emit connectionLost();
+        delete socket;
+        socket = nullptr;
     }
 }
 
 
+QString NetworkManager::peerAddressString() const
+{
+    if (!socket)
+    {
+        return QString();
+    }
+    QHostAddress peer = socket->peerAddress();
+    QString ip;
+
+    if (peer.protocol() == QAbstractSocket::IPv6Protocol)
+    {
+        quint32 v4 = peer.toIPv4Address();
+        if (v4 != 0)
+        {
+            ip = QHostAddress(v4).toString();
+        }
+        else
+        {
+            ip = peer.toString();
+        }
+    }
+    else
+    {
+        ip = peer.toString();
+    }
+
+    return ip + ":" + QString::number(socket->peerPort());
+}
+
+void NetworkManager::stopServer()
+{
+    if (server && server->isListening())
+    {
+        server->close();
+        delete server;
+        server = nullptr;
+    }
+}

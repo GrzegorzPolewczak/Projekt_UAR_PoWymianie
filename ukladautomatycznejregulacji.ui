@@ -40,7 +40,7 @@
      </rect>
     </property>
     <property name="frameShape">
-     <enum>QFrame::Box</enum>
+     <enum>QFrame::Shape::Box</enum>
     </property>
     <layout class="QVBoxLayout" name="verticalLayout_19">
      <item>
@@ -50,7 +50,7 @@
          <item>
           <widget class="QFrame" name="frame">
            <property name="frameShape">
-            <enum>QFrame::Box</enum>
+            <enum>QFrame::Shape::Box</enum>
            </property>
            <layout class="QVBoxLayout" name="verticalLayout_13">
             <item>
@@ -66,7 +66,7 @@
                       <item>
                        <widget class="QFrame" name="frame">
                         <property name="frameShape">
-                         <enum>QFrame::Box</enum>
+                         <enum>QFrame::Shape::Box</enum>
                         </property>
                         <layout class="QVBoxLayout" name="verticalLayout_2">
                          <property name="leftMargin">
@@ -302,7 +302,7 @@
                             </size>
                            </property>
                            <property name="layoutDirection">
-                            <enum>Qt::RightToLeft</enum>
+                            <enum>Qt::LayoutDirection::RightToLeft</enum>
                            </property>
                            <property name="autoFillBackground">
                             <bool>false</bool>
@@ -321,7 +321,7 @@
                          <item>
                           <widget class="QCheckBox" name="checkbox_calkowanie">
                            <property name="layoutDirection">
-                            <enum>Qt::RightToLeft</enum>
+                            <enum>Qt::LayoutDirection::RightToLeft</enum>
                            </property>
                            <property name="text">
                             <string>Całkowanie przed sumą</string>
@@ -381,7 +381,7 @@
                            </size>
                           </property>
                           <property name="layoutDirection">
-                           <enum>Qt::LeftToRight</enum>
+                           <enum>Qt::LayoutDirection::LeftToRight</enum>
                           </property>
                           <property name="maxVisibleItems">
                            <number>11</number>
@@ -412,7 +412,7 @@
                   <item>
                    <widget class="QFrame" name="frame">
                     <property name="frameShape">
-                     <enum>QFrame::Box</enum>
+                     <enum>QFrame::Shape::Box</enum>
                     </property>
                     <layout class="QVBoxLayout" name="verticalLayout_6">
                      <item>
@@ -626,7 +626,7 @@
                      </size>
                     </property>
                     <property name="layoutDirection">
-                     <enum>Qt::LeftToRight</enum>
+                     <enum>Qt::LayoutDirection::LeftToRight</enum>
                     </property>
                     <property name="text">
                      <string>Zapisz dane do pliku</string>
@@ -648,7 +648,7 @@
                      </size>
                     </property>
                     <property name="layoutDirection">
-                     <enum>Qt::LeftToRight</enum>
+                     <enum>Qt::LayoutDirection::LeftToRight</enum>
                     </property>
                     <property name="text">
                      <string>Wgraj dane z pliku</string>
@@ -672,7 +672,7 @@
                    </size>
                   </property>
                   <property name="layoutDirection">
-                   <enum>Qt::LeftToRight</enum>
+                   <enum>Qt::LayoutDirection::LeftToRight</enum>
                   </property>
                   <property name="text">
                    <string>Reset</string>
@@ -694,7 +694,7 @@
                    </size>
                   </property>
                   <property name="layoutDirection">
-                   <enum>Qt::LeftToRight</enum>
+                   <enum>Qt::LayoutDirection::LeftToRight</enum>
                   </property>
                   <property name="text">
                    <string>Zatrzymaj</string>
@@ -722,7 +722,7 @@
                    </size>
                   </property>
                   <property name="layoutDirection">
-                   <enum>Qt::LeftToRight</enum>
+                   <enum>Qt::LayoutDirection::LeftToRight</enum>
                   </property>
                   <property name="text">
                    <string>Symuluj</string>
@@ -868,6 +868,19 @@
      <string>STATUS </string>
     </property>
    </widget>
+   <widget class="QLabel" name="lbAdresPolaczenia">
+    <property name="geometry">
+     <rect>
+      <x>10</x>
+      <y>700</y>
+      <width>331</width>
+      <height>20</height>
+     </rect>
+    </property>
+    <property name="text">
+     <string>Adres polaczenia</string>
+    </property>
+   </widget>
   </widget>
   <widget class="QMenuBar" name="menubar">
    <property name="geometry">
@@ -875,7 +888,7 @@
      <x>0</x>
      <y>0</y>
      <width>1400</width>
-     <height>21</height>
+     <height>25</height>
     </rect>
    </property>
   </widget>
