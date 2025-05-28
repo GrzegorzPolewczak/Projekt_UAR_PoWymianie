@@ -831,32 +831,27 @@ void UkladAutomatycznejRegulacji::on_checkbox_trybSieciowy_stateChanged(int arg1
 
 void UkladAutomatycznejRegulacji::onSterowanieReceived(double sterowanie)
 {
-    // inkrementujemy lokalny czas (lub użyj QElapsedTimer)
-    serverTime += interwal / 1000.0; // zakładając, że interwał jest ms, np. 100 ms
+    serverTime += interwal / 1000.0;
 
-    // dopisujemy punkt do wykresu "Sterowanie" (graph(0) w customPlot_pid)
-    ui->customPlot_pid->graph(0)->addData(serverTime, sterowanie);
+    ui->customPlot->graph(0)->addData(serverTime, sterowanie);
 
-    // przewijanie osi X (jak w startSymulacji)
     if (serverTime > ui->customPlot_pid->xAxis->range().upper) {
         ui->customPlot_pid->xAxis->setRange(serverTime, 10, Qt::AlignRight);
     }
 
-    ui->customPlot_pid->replot();
+    ui->customPlot->replot();
 }
 
 void UkladAutomatycznejRegulacji::onWartoscZadanaReceived(double wartoscZadana)
 {
-    // przyjmujemy, że serwerTime jest już używany do osi X:
     serverTime += interwal/1000.0;
 
-    // dopisujemy do drugiego wykresu (graph(1))
-    ui->customPlot_pid->graph(1)->addData(serverTime, wartoscZadana);
 
-    // automatyczne przesuwanie osi X
+    ui->customPlot->graph(1)->addData(serverTime, wartoscZadana);
+
     if (serverTime > ui->customPlot_pid->xAxis->range().upper) {
         ui->customPlot_pid->xAxis->setRange(serverTime, 10, Qt::AlignRight);
     }
 
-    ui->customPlot_pid->replot();
+    ui->customPlot->replot();
 }
