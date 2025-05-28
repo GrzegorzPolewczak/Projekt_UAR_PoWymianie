@@ -55,6 +55,9 @@ private slots:
 
     void rozlaczPolaczenie();
 
+    void onSterowanieReceived(double sterowanie);
+    void onWartoscZadanaReceived(double wartoscZadana);
+
 private:
     Ui::UkladAutomatycznejRegulacji *ui;
     UkladSterowania* us;
@@ -70,6 +73,7 @@ private:
     double zaklocenie = 0.0, interwal = 100.0;
     NetworkManager *manager;
 
+    double serverTime = 0.0;
 };
 
 #endif // UKLADAUTOMATYCZNEJREGULACJI_H

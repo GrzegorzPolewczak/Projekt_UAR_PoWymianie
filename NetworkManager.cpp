@@ -69,13 +69,14 @@ void NetworkManager::onSocketError(QAbstractSocket::SocketError socketError)
     emit connectionFailed("Połączenie zostało zamknięte przez serwer.");
 }
 
-void NetworkManager::sendSterowanie(double sterowanie)
+void NetworkManager::sendSterowanie(double sterowanie, double wartoscZadana)
 {
     if (socket && socket->isOpen()) {
         QByteArray dane;
         QDataStream stream(&dane, QIODevice::WriteOnly);
         stream.setVersion(QDataStream::Qt_5_15);
-        stream << sterowanie;
+        stream << sterowanie
+                << wartoscZadana;
         socket->write(dane);
     }
 }
@@ -90,14 +91,20 @@ void NetworkManager::handleReadyRead()
 
     if (czyJestemSerwerem)
     {
-        double sterowanie;
-        stream >> sterowanie;
+        double sterowanie, wartoscZadana;
+        if (socket->bytesAvailable() < qint64(sizeof(double)*2))
+            return;
+
+        stream >> sterowanie
+            >> wartoscZadana;
+
+        emit otrzymanoSterowanie(sterowanie);
+        emit otrzymanoWartoscZadana(wartoscZadana);
 
         if (modelGlobalny)
         {
-           // qDebug() << "[SERVER] otrzymano sterowanie =" << sterowanie;
             double wyjscie = modelGlobalny->wykonajKrok(sterowanie);
-            //qDebug() << "[SERVER] obliczone wyjscie =" << wyjscie;
+
             QByteArray odpowiedz;
             QDataStream sOut(&odpowiedz, QIODevice::WriteOnly);
             sOut.setVersion(QDataStream::Qt_5_15);
@@ -111,9 +118,6 @@ void NetworkManager::handleReadyRead()
         double wyjscie;
         stream >> wyjscie;
         ostatnieWyjscie = wyjscie;
-
-        //qDebug() << "[CLIENT] odebrano wyjscie =" << wyjscie;
-
         emit otrzymanoWyjscie(wyjscie);
     }
 }

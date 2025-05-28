@@ -18,7 +18,7 @@ public:
     bool startServer(quint16 port);
     void connectToServer(const QString &host, quint16 port);
 
-    void sendSterowanie(double sterowanie);
+    void sendSterowanie(double sterowanie, double wartoscZadana);
     void setModel(ModelARX* m);
 
     void disconnectFromHost();
@@ -36,7 +36,9 @@ signals:
     void clientConnected();
     void otrzymanoWyjscie(double wyjscie);
     void connectionLost();
-    //void connectionFailed(const QString &msg);
+
+    void otrzymanoSterowanie(double sterowanie);
+    void otrzymanoWartoscZadana(double wartoscZadana);
 
 private slots:
     void onNewConnection();

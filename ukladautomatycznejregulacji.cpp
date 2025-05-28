@@ -182,6 +182,12 @@ UkladAutomatycznejRegulacji::UkladAutomatycznejRegulacji(QWidget *parent, ModelA
     });
 
     connect(ui->btn_rozlacz, &QPushButton::clicked, this, &UkladAutomatycznejRegulacji::rozlaczPolaczenie);
+
+
+    connect(manager, &NetworkManager::otrzymanoSterowanie,
+            this, &UkladAutomatycznejRegulacji::onSterowanieReceived);
+    connect(manager, &NetworkManager::otrzymanoWartoscZadana,
+            this, &UkladAutomatycznejRegulacji::onWartoscZadanaReceived);
 }
 
 void UkladAutomatycznejRegulacji::rozlaczPolaczenie()
@@ -223,7 +229,7 @@ void UkladAutomatycznejRegulacji::startSymulacji()
     if (ui->checkbox_trybSieciowy->isChecked())
     {
         odpowiedzOdebrana = false;
-        manager->sendSterowanie(wartZadana);
+        manager->sendSterowanie(wartZadana,wartZadana - wyjscie_pid);
 
         QElapsedTimer timeout;
         timeout.start();
@@ -761,19 +767,6 @@ void UkladAutomatycznejRegulacji::on_btn_start_server_clicked()
         }
     }
 
-    // connect(manager, &NetworkManager::clientConnected, this, [=]() {
-    //     QMessageBox::information(this, "Klient połączony", "Klient połączył się z serwerem");
-
-    //     ui->wgrajARX->setEnabled(true);
-    //     ui->wgrajGWZ->setEnabled(false);
-    //     ui->wgrajPID->setEnabled(false);
-    //     ui->symuluj->setEnabled(false);
-    //     ui->resetuj->setEnabled(false);
-    //     ui->zatrzymaj->setEnabled(false);
-    //     ui->reset_calka->setEnabled(false);
-    //     ui->btn_polacz_klient->setEnabled(false);
-    //     ui->btn_start_server->setEnabled(false);
-    // });
 }
 
 
@@ -787,20 +780,6 @@ void UkladAutomatycznejRegulacji::on_btn_polacz_klient_clicked()
     if (ok) {
         manager->connectToServer(host, port);
     }
-
-    // connect(manager, &NetworkManager::connectedToPeer, this, [=]() {
-    //     QMessageBox::information(this, "Połączono", "Połączono z serwerem");
-    //         ustawPID();
-    //     ui->wgrajGWZ->setEnabled(true);
-    //     ui->wgrajPID->setEnabled(true);
-    //     ui->symuluj->setEnabled(true);
-    //     ui->resetuj->setEnabled(true);
-    //     ui->zatrzymaj->setEnabled(false);
-    //     ui->wgrajARX->setEnabled(false);
-    //     ui->reset_calka->setEnabled(true);
-    //     ui->btn_polacz_klient->setEnabled(false);
-    //     ui->btn_start_server->setEnabled(false);
-    // });
 }
 
 
@@ -850,4 +829,34 @@ void UkladAutomatycznejRegulacji::on_checkbox_trybSieciowy_stateChanged(int arg1
     ui->btn_start_server->setEnabled(true);
 }
 
+void UkladAutomatycznejRegulacji::onSterowanieReceived(double sterowanie)
+{
+    // inkrementujemy lokalny czas (lub użyj QElapsedTimer)
+    serverTime += interwal / 1000.0; // zakładając, że interwał jest ms, np. 100 ms
 
+    // dopisujemy punkt do wykresu "Sterowanie" (graph(0) w customPlot_pid)
+    ui->customPlot_pid->graph(0)->addData(serverTime, sterowanie);
+
+    // przewijanie osi X (jak w startSymulacji)
+    if (serverTime > ui->customPlot_pid->xAxis->range().upper) {
+        ui->customPlot_pid->xAxis->setRange(serverTime, 10, Qt::AlignRight);
+    }
+
+    ui->customPlot_pid->replot();
+}
+
+void UkladAutomatycznejRegulacji::onWartoscZadanaReceived(double wartoscZadana)
+{
+    // przyjmujemy, że serwerTime jest już używany do osi X:
+    serverTime += interwal/1000.0;
+
+    // dopisujemy do drugiego wykresu (graph(1))
+    ui->customPlot_pid->graph(1)->addData(serverTime, wartoscZadana);
+
+    // automatyczne przesuwanie osi X
+    if (serverTime > ui->customPlot_pid->xAxis->range().upper) {
+        ui->customPlot_pid->xAxis->setRange(serverTime, 10, Qt::AlignRight);
+    }
+
+    ui->customPlot_pid->replot();
+}
