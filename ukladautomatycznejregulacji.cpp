@@ -223,18 +223,18 @@ void UkladAutomatycznejRegulacji::startSymulacji()
     double wyjscie_pid = us->regulator.wykonajKrok(us->getUchyb());
 
 
-    double wyjscie_modelu = 0.0;
-    double uchyb = 0.0;
+    double wyjscie_modelu;
+    //double uchyb = 0.0;
 
     if (ui->checkbox_trybSieciowy->isChecked())
     {
         odpowiedzOdebrana = false;
-        manager->sendSterowanie(wartZadana,wartZadana - wyjscie_pid);
+        manager->sendSterowanie(wartZadana,wyjscie_modelu);
 
         QElapsedTimer timeout;
         timeout.start();
 
-        while (!odpowiedzOdebrana && timeout.elapsed() < 100) {
+        while (!odpowiedzOdebrana && timeout.elapsed() < 300) {
            QCoreApplication::processEvents();
         }
 
@@ -833,10 +833,10 @@ void UkladAutomatycznejRegulacji::onSterowanieReceived(double sterowanie)
 {
     serverTime += interwal / 1000.0;
 
-    ui->customPlot->graph(0)->addData(serverTime, sterowanie);
+    ui->customPlot->graph(1)->addData(serverTime, sterowanie);
 
-    if (serverTime > ui->customPlot_pid->xAxis->range().upper) {
-        ui->customPlot_pid->xAxis->setRange(serverTime, 10, Qt::AlignRight);
+    if (serverTime > ui->customPlot->xAxis->range().upper) {
+        ui->customPlot->xAxis->setRange(serverTime, 10, Qt::AlignRight);
     }
 
     ui->customPlot->replot();
@@ -847,10 +847,10 @@ void UkladAutomatycznejRegulacji::onWartoscZadanaReceived(double wartoscZadana)
     serverTime += interwal/1000.0;
 
 
-    ui->customPlot->graph(1)->addData(serverTime, wartoscZadana);
+    ui->customPlot->graph(0)->addData(serverTime, wartoscZadana);
 
-    if (serverTime > ui->customPlot_pid->xAxis->range().upper) {
-        ui->customPlot_pid->xAxis->setRange(serverTime, 10, Qt::AlignRight);
+    if (serverTime > ui->customPlot->xAxis->range().upper) {
+        ui->customPlot->xAxis->setRange(serverTime, 10, Qt::AlignRight);
     }
 
     ui->customPlot->replot();
