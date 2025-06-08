@@ -188,6 +188,9 @@ UkladAutomatycznejRegulacji::UkladAutomatycznejRegulacji(QWidget *parent, ModelA
             this, &UkladAutomatycznejRegulacji::onSterowanieReceived);
     connect(manager, &NetworkManager::otrzymanoWartoscZadana,
             this, &UkladAutomatycznejRegulacji::onWartoscZadanaReceived);
+
+    connect(manager, &NetworkManager::otrzymanoWyjscie,
+            this, &UkladAutomatycznejRegulacji::onRegulatedValueReceived);
 }
 
 void UkladAutomatycznejRegulacji::rozlaczPolaczenie()
@@ -229,7 +232,7 @@ void UkladAutomatycznejRegulacji::startSymulacji()
     if (ui->checkbox_trybSieciowy->isChecked())
     {
         odpowiedzOdebrana = false;
-        manager->sendSterowanie(wartZadana,wyjscie_modelu);
+        manager->sendSterowanie(wartZadana,wyjscie_pid);
 
         QElapsedTimer timeout;
         timeout.start();
@@ -831,7 +834,8 @@ void UkladAutomatycznejRegulacji::on_checkbox_trybSieciowy_stateChanged(int arg1
 
 void UkladAutomatycznejRegulacji::onSterowanieReceived(double sterowanie)
 {
-    serverTime += interwal / 1000.0;
+    //serverTime += interwal/1000.0;
+
 
     ui->customPlot->graph(1)->addData(serverTime, sterowanie);
 
@@ -844,14 +848,29 @@ void UkladAutomatycznejRegulacji::onSterowanieReceived(double sterowanie)
 
 void UkladAutomatycznejRegulacji::onWartoscZadanaReceived(double wartoscZadana)
 {
-    serverTime += interwal/1000.0;
+   // serverTime += interwal / 1000.0;
 
+    ui->customPlot_pid->graph(0)->addData(serverTime, wartoscZadana);
 
-    ui->customPlot->graph(0)->addData(serverTime, wartoscZadana);
+    if (serverTime > ui->customPlot_pid->xAxis->range().upper) {
+        ui->customPlot_pid->xAxis->setRange(serverTime, 10, Qt::AlignRight);
+    }
 
+    ui->customPlot_pid->replot();
+
+}
+
+void UkladAutomatycznejRegulacji::onRegulatedValueReceived(double regulatedValue)
+{
+    // inkrementujemy czas **raz** na krok sieciowy:
+    serverTime += interwal / 1000.0;
+
+    // dopisujemy nowy punkt do wykresu "wartość regulowana" (graph 0):
+    ui->customPlot->graph(0)->addData(serverTime, regulatedValue);
+
+    // przesuwamy oś czasu, jeśli to konieczne:
     if (serverTime > ui->customPlot->xAxis->range().upper) {
         ui->customPlot->xAxis->setRange(serverTime, 10, Qt::AlignRight);
     }
-
     ui->customPlot->replot();
 }

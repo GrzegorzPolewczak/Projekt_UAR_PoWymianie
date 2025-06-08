@@ -57,6 +57,7 @@ private slots:
 
     void onSterowanieReceived(double sterowanie);
     void onWartoscZadanaReceived(double wartoscZadana);
+    void onRegulatedValueReceived(double regulatedValue);
 
 private:
     Ui::UkladAutomatycznejRegulacji *ui;

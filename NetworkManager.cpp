@@ -105,6 +105,8 @@ void NetworkManager::handleReadyRead()
         {
             double wyjscie = modelGlobalny->wykonajKrok(sterowanie);
 
+            emit otrzymanoWyjscie(wyjscie);
+
             QByteArray odpowiedz;
             QDataStream sOut(&odpowiedz, QIODevice::WriteOnly);
             sOut.setVersion(QDataStream::Qt_5_15);
