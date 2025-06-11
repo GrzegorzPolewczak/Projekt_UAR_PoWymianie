@@ -30,6 +30,10 @@ public:
 
     QString peerAddressString() const;
 
+    void sendInterwal(double interwal);
+    void setInterwal(double i) { interwal = i; }
+    double getInterwal() const { return interwal; }
+
 signals:
     void connectedToPeer();
     void connectionFailed(QString reason);
@@ -39,6 +43,8 @@ signals:
 
     void otrzymanoSterowanie(double sterowanie);
     void otrzymanoWartoscZadana(double wartoscZadana);
+
+    void otrzymanoInterwal(double interwal);
 
 private slots:
     void onNewConnection();
@@ -56,6 +62,7 @@ private:
     double ostatnieWyjscie = 0.0;
 
     bool czyJestemSerwerem = false;
+    double interwal = 0.0;
 };
 
 #endif // NETWORKMANAGER_H

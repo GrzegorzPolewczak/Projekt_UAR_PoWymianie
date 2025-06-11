@@ -383,6 +383,9 @@
                           <property name="layoutDirection">
                            <enum>Qt::LayoutDirection::LeftToRight</enum>
                           </property>
+                          <property name="currentText">
+                           <string>prostokatny</string>
+                          </property>
                           <property name="maxVisibleItems">
                            <number>11</number>
                           </property>
@@ -572,6 +575,9 @@
                            <width>80</width>
                            <height>30</height>
                           </size>
+                         </property>
+                         <property name="value">
+                          <double>2.000000000000000</double>
                          </property>
                         </widget>
                        </item>

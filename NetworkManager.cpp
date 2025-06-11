@@ -52,6 +52,7 @@ void NetworkManager::onNewConnection() {
     connect(socket, &QTcpSocket::readyRead, this, &NetworkManager::handleReadyRead);
     connect(socket, &QTcpSocket::disconnected, this, &NetworkManager::connectionLost);
     connect(socket,QOverload<QAbstractSocket::SocketError>::of(&QTcpSocket::errorOccurred), this, &NetworkManager::onSocketError);
+    if (interwal > 0.0) sendInterwal(interwal);
     emit clientConnected();
 }
 
@@ -110,17 +111,28 @@ void NetworkManager::handleReadyRead()
             QByteArray odpowiedz;
             QDataStream sOut(&odpowiedz, QIODevice::WriteOnly);
             sOut.setVersion(QDataStream::Qt_5_15);
-            sOut << wyjscie;
+            sOut << QString("DATA")  // <-- teraz czytelny nagłówek
+                 << wyjscie;
             socket->write(odpowiedz);
             socket->flush();
         }
     }
     else
     {
-        double wyjscie;
-        stream >> wyjscie;
-        ostatnieWyjscie = wyjscie;
-        emit otrzymanoWyjscie(wyjscie);
+        QString typ;
+        stream >> typ;
+
+        if (typ == "INTERWAL") {
+            double interwal;
+            stream >> interwal;
+            emit otrzymanoInterwal(interwal);
+        }
+        else if (typ == "DATA") {
+            double wyjscie;
+            stream >> wyjscie;
+            ostatnieWyjscie = wyjscie;
+            emit otrzymanoWyjscie(wyjscie);
+        }
     }
 }
 
@@ -177,5 +189,15 @@ void NetworkManager::stopServer()
         server->close();
         delete server;
         server = nullptr;
+    }
+}
+
+void NetworkManager::sendInterwal(double interwal) {
+    if (socket && socket->isOpen()) {
+        QByteArray dane;
+        QDataStream stream(&dane, QIODevice::WriteOnly);
+        stream.setVersion(QDataStream::Qt_5_15);
+        stream << QString("INTERWAL") << interwal;
+        socket->write(dane);
     }
 }

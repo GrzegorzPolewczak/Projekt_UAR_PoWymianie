@@ -191,6 +191,8 @@ UkladAutomatycznejRegulacji::UkladAutomatycznejRegulacji(QWidget *parent, ModelA
 
     connect(manager, &NetworkManager::otrzymanoWyjscie,
             this, &UkladAutomatycznejRegulacji::onRegulatedValueReceived);
+
+    connect(manager, &NetworkManager::otrzymanoInterwal, this, &UkladAutomatycznejRegulacji::onOtrzymanoInterwal);
 }
 
 void UkladAutomatycznejRegulacji::rozlaczPolaczenie()
@@ -220,7 +222,8 @@ UkladAutomatycznejRegulacji::~UkladAutomatycznejRegulacji()
 
 void UkladAutomatycznejRegulacji::startSymulacji()
 {
-    time += 0.1;
+    //time += 0.1;
+    time += interwal/1000.0;
 
     double wartZadana = us->gwz.pobierzWartoscZadana(time);
     double wyjscie_pid = us->regulator.wykonajKrok(us->getUchyb());
@@ -345,7 +348,10 @@ void UkladAutomatycznejRegulacji::on_symuluj_clicked()
     {
         if (!timer->isActive()) {
             int interwalCzasowy = interwal;
-            timer->start(interwalCzasowy);
+            if (!ui->checkbox_trybSieciowy->isChecked() || (manager && manager->isClient() && !manager->isServer())) {
+                timer->start(interwalCzasowy);
+            }
+            //timer->start(interwalCzasowy);
             ui->symuluj->setEnabled(false);
             ui->zatrzymaj->setEnabled(true);
             ui->resetuj->setEnabled(true);
@@ -667,6 +673,7 @@ void UkladAutomatycznejRegulacji::on_wgrajARX_clicked()
 
     if (okienko.exec() == QDialog::Accepted)
     {
+
         wektor_a = okienko.getWartoscA();
         wektor_b = okienko.getWartoscB();
         opoznienie = okienko.getOpoznienie();
@@ -675,6 +682,11 @@ void UkladAutomatycznejRegulacji::on_wgrajARX_clicked()
 
         isWgrane[0] = 1;
         ustawARX(wektor_a, wektor_b, opoznienie, zaklocenie, interwal);
+
+        if (ui->checkbox_trybSieciowy->isChecked() && manager && manager->isServer()) {
+            manager->setInterwal(interwal);   // <-- ustaw pole w managerze
+            manager->sendInterwal(interwal);  // <-- wyślij do klienta
+        }
 
     }
 
@@ -834,7 +846,7 @@ void UkladAutomatycznejRegulacji::on_checkbox_trybSieciowy_stateChanged(int arg1
 
 void UkladAutomatycznejRegulacji::onSterowanieReceived(double sterowanie)
 {
-    //serverTime += interwal/1000.0;
+    serverTime += interwal/1000.0;
 
 
     ui->customPlot->graph(1)->addData(serverTime, sterowanie);
@@ -863,7 +875,7 @@ void UkladAutomatycznejRegulacji::onWartoscZadanaReceived(double wartoscZadana)
 void UkladAutomatycznejRegulacji::onRegulatedValueReceived(double regulatedValue)
 {
     // inkrementujemy czas **raz** na krok sieciowy:
-    serverTime += interwal / 1000.0;
+   // serverTime += interwal / 1000.0;
 
     // dopisujemy nowy punkt do wykresu "wartość regulowana" (graph 0):
     ui->customPlot->graph(0)->addData(serverTime, regulatedValue);
@@ -873,4 +885,10 @@ void UkladAutomatycznejRegulacji::onRegulatedValueReceived(double regulatedValue
         ui->customPlot->xAxis->setRange(serverTime, 10, Qt::AlignRight);
     }
     ui->customPlot->replot();
+}
+
+
+void UkladAutomatycznejRegulacji::onOtrzymanoInterwal(double interwal) {
+    timer->setInterval(static_cast<int>(interwal));
+    this->interwal = interwal;
 }
