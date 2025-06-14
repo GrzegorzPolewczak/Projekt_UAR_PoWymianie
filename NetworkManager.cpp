@@ -111,7 +111,7 @@ void NetworkManager::handleReadyRead()
             QByteArray odpowiedz;
             QDataStream sOut(&odpowiedz, QIODevice::WriteOnly);
             sOut.setVersion(QDataStream::Qt_5_15);
-            sOut << QString("DATA")  // <-- teraz czytelny nagłówek
+            sOut << QString("DATA")
                  << wyjscie;
             socket->write(odpowiedz);
             socket->flush();

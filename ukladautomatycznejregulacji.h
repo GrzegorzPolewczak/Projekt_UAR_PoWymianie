@@ -1,6 +1,7 @@
 #ifndef UKLADAUTOMATYCZNEJREGULACJI_H
 #define UKLADAUTOMATYCZNEJREGULACJI_H
 
+#include "qcustomplot.h"
 #pragma once
 
 #include <QMainWindow>
@@ -53,6 +54,8 @@ private slots:
     void on_checkbox_trybSieciowy_stateChanged(int arg1);
 
 
+    void oczyscDanePozaZakresem(QCustomPlot* wykres);
+    void rescaleVisibleY(QCustomPlot* plot);
     void rozlaczPolaczenie();
 
     void onSterowanieReceived(double sterowanie);
@@ -76,6 +79,8 @@ private:
     NetworkManager *manager;
 
     double serverTime = 0.0;
+protected:
+     void closeEvent(QCloseEvent *event) override;
 };
 
 #endif // UKLADAUTOMATYCZNEJREGULACJI_H

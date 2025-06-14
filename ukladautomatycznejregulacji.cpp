@@ -220,9 +220,54 @@ UkladAutomatycznejRegulacji::~UkladAutomatycznejRegulacji()
     delete ui;
 }
 
+void UkladAutomatycznejRegulacji::rescaleVisibleY(QCustomPlot* plot)
+{
+    double minX = plot->xAxis->range().lower;
+    double maxX = plot->xAxis->range().upper;
+
+    double minY = std::numeric_limits<double>::max();
+    double maxY = std::numeric_limits<double>::lowest();
+
+    for (int i = 0; i < plot->graphCount(); ++i)
+    {
+        auto graph = plot->graph(i);
+        auto dataMap = graph->data();
+
+        for (auto it = dataMap->constBegin(); it != dataMap->constEnd(); ++it)
+        {
+            double x = it->key;
+            double y = it->value;
+
+            if (x >= minX && x <= maxX)
+            {
+                minY = std::min(minY, y);
+                maxY = std::max(maxY, y);
+            }
+        }
+    }
+
+    if (minY < maxY)
+    {
+        double margin = 0.1 * std::max(std::abs(minY), std::abs(maxY));
+        plot->yAxis->setRange(minY - margin, maxY + margin);
+    }
+}
+
+void UkladAutomatycznejRegulacji::oczyscDanePozaZakresem(QCustomPlot* wykres)
+{
+    double minX = wykres->xAxis->range().lower - 1.0;
+    double maxX = wykres->xAxis->range().upper + 1.0;
+
+    for (int i = 0; i < wykres->graphCount(); ++i)
+    {
+        auto graph = wykres->graph(i);
+        graph->data()->removeBefore(minX);
+        graph->data()->removeAfter(maxX);
+    }
+}
+
 void UkladAutomatycznejRegulacji::startSymulacji()
 {
-    //time += 0.1;
     time += interwal/1000.0;
 
     double wartZadana = us->gwz.pobierzWartoscZadana(time);
@@ -230,7 +275,6 @@ void UkladAutomatycznejRegulacji::startSymulacji()
 
 
     double wyjscie_modelu;
-    //double uchyb = 0.0;
 
     if (ui->checkbox_trybSieciowy->isChecked())
     {
@@ -307,12 +351,24 @@ void UkladAutomatycznejRegulacji::startSymulacji()
     ui->customPlot_pid->graph(2)->addData(time, us->regulator.getTi());
     ui->customPlot_pid->graph(3)->addData(time, us->regulator.getTd());
 
+
     if (time > ui->customPlot->xAxis->range().upper)
     {
         ui->customPlot->xAxis->setRange(time, 10, Qt::AlignRight);
         ui->customPlot_uchyb->xAxis->setRange(time, 10, Qt::AlignRight);
         ui->customPlot_pid->xAxis->setRange(time, 10, Qt::AlignRight);
     }
+
+
+    oczyscDanePozaZakresem(ui->customPlot);
+    oczyscDanePozaZakresem(ui->customPlot_pid);
+    oczyscDanePozaZakresem(ui->customPlot_uchyb);
+
+    rescaleVisibleY(ui->customPlot);
+    rescaleVisibleY(ui->customPlot_pid);
+    rescaleVisibleY(ui->customPlot_uchyb);
+
+
 
     ui->customPlot->replot();
     ui->customPlot_pid->replot();
@@ -321,6 +377,15 @@ void UkladAutomatycznejRegulacji::startSymulacji()
 
 }
 
+
+void UkladAutomatycznejRegulacji::closeEvent(QCloseEvent *event)
+{
+    if (manager && (manager->isClient() || manager->isServer())) {
+        rozlaczPolaczenie();
+    }
+
+    event->accept();
+}
 
 void UkladAutomatycznejRegulacji::on_symuluj_clicked()
 {
@@ -684,15 +749,13 @@ void UkladAutomatycznejRegulacji::on_wgrajARX_clicked()
         ustawARX(wektor_a, wektor_b, opoznienie, zaklocenie, interwal);
 
         if (ui->checkbox_trybSieciowy->isChecked() && manager && manager->isServer()) {
-            manager->setInterwal(interwal);   // <-- ustaw pole w managerze
-            manager->sendInterwal(interwal);  // <-- wyślij do klienta
+            manager->setInterwal(interwal);
+            manager->sendInterwal(interwal);
         }
 
     }
 
 }
-
-
 
 void UkladAutomatycznejRegulacji::on_wgrajPID_clicked()
 {
@@ -854,36 +917,33 @@ void UkladAutomatycznejRegulacji::onSterowanieReceived(double sterowanie)
     if (serverTime > ui->customPlot->xAxis->range().upper) {
         ui->customPlot->xAxis->setRange(serverTime, 10, Qt::AlignRight);
     }
-
+    rescaleVisibleY(ui->customPlot);
     ui->customPlot->replot();
 }
 
 void UkladAutomatycznejRegulacji::onWartoscZadanaReceived(double wartoscZadana)
 {
-   // serverTime += interwal / 1000.0;
 
     ui->customPlot_pid->graph(0)->addData(serverTime, wartoscZadana);
 
     if (serverTime > ui->customPlot_pid->xAxis->range().upper) {
         ui->customPlot_pid->xAxis->setRange(serverTime, 10, Qt::AlignRight);
     }
-
+    rescaleVisibleY(ui->customPlot_pid);
     ui->customPlot_pid->replot();
 
 }
 
 void UkladAutomatycznejRegulacji::onRegulatedValueReceived(double regulatedValue)
 {
-    // inkrementujemy czas **raz** na krok sieciowy:
-   // serverTime += interwal / 1000.0;
 
-    // dopisujemy nowy punkt do wykresu "wartość regulowana" (graph 0):
     ui->customPlot->graph(0)->addData(serverTime, regulatedValue);
 
-    // przesuwamy oś czasu, jeśli to konieczne:
     if (serverTime > ui->customPlot->xAxis->range().upper) {
         ui->customPlot->xAxis->setRange(serverTime, 10, Qt::AlignRight);
     }
+
+     rescaleVisibleY(ui->customPlot);
     ui->customPlot->replot();
 }
 
